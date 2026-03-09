@@ -1,0 +1,229 @@
+{
+  "projectType": "framework",
+  "projectName": "Metaflow",
+  "projectDescription": "A human-centric framework for building and managing real-life AI and ML systems at scale",
+  "theme": "aspen",
+  "primaryColor": "#136ce4",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart",
+              "tutorial"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/flows",
+              "concepts/steps",
+              "concepts/decorators",
+              "concepts/data-artifacts",
+              "concepts/parameters",
+              "concepts/client-api"
+            ]
+          },
+          {
+            "group": "Building Flows",
+            "pages": [
+              "building/flowspec",
+              "building/branching",
+              "building/foreach",
+              "building/parameters-configs",
+              "building/data-management",
+              "building/error-handling"
+            ]
+          },
+          {
+            "group": "Scaling & Compute",
+            "pages": [
+              "scaling/overview",
+              "scaling/remote-execution",
+              "scaling/batch-computing",
+              "scaling/kubernetes",
+              "scaling/distributed-computing",
+              "scaling/resources-management"
+            ]
+          },
+          {
+            "group": "Production Deployment",
+            "pages": [
+              "production/overview",
+              "production/scheduling",
+              "production/orchestrators",
+              "production/event-triggering",
+              "production/monitoring"
+            ]
+          },
+          {
+            "group": "Multi-Cloud Support",
+            "pages": [
+              "cloud/overview",
+              "cloud/aws",
+              "cloud/azure",
+              "cloud/gcp"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/runner-api",
+              "advanced/notebooks",
+              "advanced/cards-visualization",
+              "advanced/checkpointing",
+              "advanced/secrets-management",
+              "advanced/dependency-management"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/debugging",
+              "guides/testing",
+              "guides/versioning",
+              "guides/tagging",
+              "guides/best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/flowspec",
+              "api/step",
+              "api/current",
+              "api/parameter",
+              "api/config"
+            ]
+          },
+          {
+            "group": "Decorators",
+            "pages": [
+              "api/decorators/overview",
+              "api/decorators/step",
+              "api/decorators/resources",
+              "api/decorators/batch",
+              "api/decorators/kubernetes",
+              "api/decorators/retry",
+              "api/decorators/timeout",
+              "api/decorators/catch",
+              "api/decorators/card",
+              "api/decorators/environment",
+              "api/decorators/project"
+            ]
+          },
+          {
+            "group": "Client API",
+            "pages": [
+              "api/client/metaflow",
+              "api/client/flow",
+              "api/client/run",
+              "api/client/step",
+              "api/client/task",
+              "api/client/artifact"
+            ]
+          },
+          {
+            "group": "Runner API",
+            "pages": [
+              "api/runner/runner",
+              "api/runner/deployer",
+              "api/runner/nbrunner",
+              "api/runner/nbdeployer"
+            ]
+          },
+          {
+            "group": "Data Tools",
+            "pages": [
+              "api/data/s3",
+              "api/data/includefile",
+              "api/data/datastore"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Orchestrators",
+        "groups": [
+          {
+            "group": "AWS",
+            "pages": [
+              "orchestrators/aws/step-functions",
+              "orchestrators/aws/batch",
+              "orchestrators/aws/configuration"
+            ]
+          },
+          {
+            "group": "Kubernetes",
+            "pages": [
+              "orchestrators/kubernetes/overview",
+              "orchestrators/kubernetes/argo-workflows",
+              "orchestrators/kubernetes/configuration"
+            ]
+          },
+          {
+            "group": "Other Orchestrators",
+            "pages": [
+              "orchestrators/airflow",
+              "orchestrators/azure"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "FlowSpec framework for defining AI/ML workflows",
+    "Decorators for configuring compute resources and behavior",
+    "Multi-cloud support (AWS, Azure, GCP)",
+    "Production orchestrators (Step Functions, Argo, Airflow, Kubernetes)",
+    "Client API for accessing flow runs and artifacts",
+    "Runner API for programmatic flow execution",
+    "Distributed and parallel computing",
+    "Built-in checkpointing and failure recovery",
+    "Experiment tracking and versioning",
+    "Cards for visualization and reporting",
+    "Seamless scaling from local to cloud",
+    "Notebook integration"
+  ],
+  "publicApiSurface": [
+    "FlowSpec",
+    "step",
+    "Parameter",
+    "Config",
+    "current",
+    "Flow",
+    "Run",
+    "Step",
+    "Task",
+    "DataArtifact",
+    "Metaflow",
+    "Runner",
+    "Deployer",
+    "NBRunner",
+    "NBDeployer",
+    "@batch",
+    "@kubernetes",
+    "@resources",
+    "@retry",
+    "@timeout",
+    "@catch",
+    "@card",
+    "@environment",
+    "@project",
+    "S3",
+    "IncludeFile"
+  ]
+}
