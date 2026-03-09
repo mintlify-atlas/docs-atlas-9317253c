@@ -1,0 +1,150 @@
+---
+title: "@resources"
+---
+
+The `@resources` decorator specifies the compute resources needed for a step, independent of the execution backend (AWS Batch, Kubernetes, etc.).
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, resources
+
+class MyFlow(FlowSpec):
+    @resources(cpu=4, memory=16384, gpu=1)
+    @step
+    def train_model(self):
+        # This step will get 4 CPUs, 16GB RAM, and 1 GPU
+        pass
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+Run with a specific backend:
+
+```bash
+python myflow.py run --with batch
+# or
+python myflow.py run --with kubernetes
+```
+
+## Description
+
+The `@resources` decorator allows you to specify compute requirements separately from the execution backend. This makes it easy to switch between AWS Batch, Kubernetes, or other compute layers without changing your resource specifications.
+
+When combined with `@batch` or `@kubernetes`, the maximum value from all decorators is used for each resource.
+
+## Parameters
+
+<ParamField path="cpu" type="int" default="1">
+  Number of CPUs required for this step.
+</ParamField>
+
+<ParamField path="memory" type="int" default="4096">
+  Memory size (in MB) required for this step.
+</ParamField>
+
+<ParamField path="gpu" type="int" default="None">
+  Number of GPUs required for this step.
+</ParamField>
+
+<ParamField path="disk" type="int" default="None">
+  Disk size (in MB) required for this step. Only applies on Kubernetes.
+</ParamField>
+
+<ParamField path="shared_memory" type="int" default="None">
+  The value for the size (in MiB) of the /dev/shm volume for this step. This parameter maps to the `--shm-size` option in Docker.
+</ParamField>
+
+## Examples
+
+### Basic Resource Specification
+
+```python
+@resources(cpu=2, memory=8192)
+@step
+def process(self):
+    # Gets 2 CPUs and 8GB RAM
+    pass
+```
+
+### GPU-Accelerated Step
+
+```python
+@resources(cpu=8, memory=32768, gpu=2)
+@step
+def train(self):
+    import torch
+    device = torch.device('cuda')
+    # Training code using 2 GPUs
+    pass
+```
+
+### With Shared Memory
+
+```python
+@resources(cpu=4, memory=16384, shared_memory=8192)
+@step
+def parallel_processing(self):
+    # Useful for shared memory multiprocessing
+    pass
+```
+
+### Backend-Agnostic Workflow
+
+```python
+class TrainingFlow(FlowSpec):
+    @resources(cpu=4, memory=16384, gpu=1)
+    @step
+    def train(self):
+        # Same resources on any backend
+        pass
+```
+
+Run on different backends:
+
+```bash
+# On AWS Batch
+python flow.py run --with batch
+
+# On Kubernetes
+python flow.py run --with kubernetes
+
+# Override resources at runtime
+python flow.py run --with batch:cpu=8,memory=32768
+```
+
+## Combining with @batch or @kubernetes
+
+When used with `@batch` or `@kubernetes`, the maximum value wins:
+
+```python
+@resources(cpu=4, memory=8192)
+@batch(cpu=2, memory=16384)
+@step
+def process(self):
+    # Gets: cpu=4 (max of 4 and 2)
+    #       memory=16384 (max of 8192 and 16384)
+    pass
+```
+
+## Runtime Override
+
+Override resource values at runtime:
+
+```bash
+python flow.py run --with batch:cpu=8,memory=32768,gpu=2
+```
+
+## Best Practices
+
+1. **Start small**: Begin with conservative resource allocations and scale up as needed
+2. **Monitor usage**: Use cloud provider dashboards to see actual resource utilization
+3. **Backend agnostic**: Use `@resources` for portability across compute platforms
+4. **GPU considerations**: Only request GPUs when you have GPU-accelerated code
+
+## See Also
+
+- [@batch decorator](/api/decorators/batch)
+- [@kubernetes decorator](/api/decorators/kubernetes)
+- [Scaling Compute](/docs/guides/scaling)

@@ -1,0 +1,699 @@
+---
+title: "Argo Workflows Integration"
+description: "Deploy and orchestrate production Metaflow workflows using Argo Workflows on Kubernetes"
+---
+
+## Overview
+
+Argo Workflows is a container-native workflow engine for Kubernetes that enables you to orchestrate parallel jobs as directed acyclic graphs (DAGs). The Metaflow integration allows you to deploy your flows as Argo WorkflowTemplates for production scheduling and event-driven execution.
+
+<Note>
+Argo Workflows is the recommended production orchestrator for Metaflow on Kubernetes, providing enterprise-grade workflow orchestration with built-in scheduling, event triggering, and monitoring capabilities.
+</Note>
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="Production Scheduling" icon="calendar">
+    Schedule workflows with cron expressions using CronWorkflows
+  </Card>
+  <Card title="Event Triggering" icon="bolt">
+    Trigger workflows based on events using Argo Events integration
+  </Card>
+  <Card title="DAG Visualization" icon="diagram-project">
+    Visualize workflow execution in the Argo Workflows UI
+  </Card>
+  <Card title="Workflow Management" icon="list-check">
+    Deploy, trigger, suspend, and terminate workflows programmatically
+  </Card>
+</CardGroup>
+
+## Architecture
+
+When you deploy a Metaflow flow to Argo Workflows:
+
+1. **Flow Definition**: Your Metaflow flow is compiled into an Argo WorkflowTemplate
+2. **Step Mapping**: Each Metaflow step becomes a DAG task in Argo
+3. **Resource Specification**: `@kubernetes` decorator settings define pod specs
+4. **Execution**: Workflows are triggered by schedule, events, or manual invocation
+5. **Monitoring**: Track execution through Argo UI or Metaflow Client API
+
+## Prerequisites
+
+<Steps>
+  <Step title="Install Argo Workflows">
+    Install Argo Workflows (v3.2+) on your Kubernetes cluster:
+    ```bash
+    kubectl create namespace argo
+    kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/latest/download/install.yaml
+    ```
+  </Step>
+  
+  <Step title="Install Argo Events (Optional)">
+    For event-driven workflows, install Argo Events:
+    ```bash
+    kubectl create namespace argo-events
+    kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install.yaml
+    ```
+  </Step>
+  
+  <Step title="Configure Metaflow">
+    Set required environment variables:
+    ```bash
+    export METAFLOW_KUBERNETES_NAMESPACE=argo
+    export METAFLOW_DATASTORE_SYSROOT_S3=s3://my-metaflow-bucket
+    export METAFLOW_KUBERNETES_SERVICE_ACCOUNT=metaflow-sa
+    ```
+  </Step>
+  
+  <Step title="Create Service Account">
+    Create a Kubernetes ServiceAccount with appropriate permissions:
+    ```yaml
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: metaflow-sa
+      namespace: argo
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: metaflow-role
+      namespace: argo
+    rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log"]
+      verbs: ["get", "list", "create", "delete"]
+    - apiGroups: ["argoproj.io"]
+      resources: ["workflows", "workflowtemplates"]
+      verbs: ["get", "list", "create", "update", "delete"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: metaflow-rolebinding
+      namespace: argo
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: metaflow-role
+    subjects:
+    - kind: ServiceAccount
+      name: metaflow-sa
+      namespace: argo
+    ```
+  </Step>
+</Steps>
+
+## Deploying Workflows
+
+### Basic Deployment
+
+Deploy a Metaflow flow to Argo Workflows:
+
+```python
+from metaflow import FlowSpec, step, kubernetes, schedule
+
+class TrainingFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        print("Starting training workflow")
+        self.next(self.prepare)
+    
+    @kubernetes(cpu=2, memory=8000)
+    @step
+    def prepare(self):
+        # Data preparation on Kubernetes
+        self.data = load_data()
+        self.next(self.train)
+    
+    @kubernetes(cpu=8, memory=32000, gpu=1)
+    @step
+    def train(self):
+        # Model training with GPU
+        self.model = train_model(self.data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Training complete. Model accuracy: {self.model.accuracy}")
+
+if __name__ == '__main__':
+    TrainingFlow()
+```
+
+Deploy to Argo Workflows:
+
+```bash
+python training_flow.py argo-workflows create
+```
+
+This creates an Argo WorkflowTemplate that can be triggered on-demand.
+
+### Scheduled Workflows
+
+Schedule workflows using the `@schedule` decorator:
+
+```python
+from metaflow import FlowSpec, step, kubernetes, schedule
+
+@schedule(cron='0 2 * * *', timezone='America/New_York')
+class DailyETLFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        self.date = datetime.now().strftime('%Y-%m-%d')
+        self.next(self.extract)
+    
+    @kubernetes(cpu=4, memory=16000)
+    @step
+    def extract(self):
+        self.raw_data = extract_data(self.date)
+        self.next(self.transform)
+    
+    @kubernetes(cpu=8, memory=32000)
+    @step
+    def transform(self):
+        self.clean_data = transform(self.raw_data)
+        self.next(self.load)
+    
+    @kubernetes(cpu=2, memory=8000)
+    @step
+    def load(self):
+        load_to_warehouse(self.clean_data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"ETL completed for {self.date}")
+```
+
+Deploy with scheduling:
+
+```bash
+python daily_etl_flow.py argo-workflows create
+```
+
+This creates both a WorkflowTemplate and a CronWorkflow that runs at 2 AM EST daily.
+
+### Event-Driven Workflows
+
+Trigger workflows based on events using the `@trigger` decorator:
+
+```python
+from metaflow import FlowSpec, step, kubernetes, trigger
+
+@trigger(events=[
+    {
+        'name': 'data-arrived',
+        'parameters': {
+            'dataset_id': 'dataset_id',
+            'timestamp': 'timestamp'
+        }
+    }
+])
+class EventDrivenFlow(FlowSpec):
+    
+    dataset_id = Parameter('dataset_id', required=True)
+    timestamp = Parameter('timestamp', required=True)
+    
+    @step
+    def start(self):
+        print(f"Processing dataset {self.dataset_id} from {self.timestamp}")
+        self.next(self.process)
+    
+    @kubernetes(cpu=4, memory=16000)
+    @step
+    def process(self):
+        # Process the incoming data
+        self.result = process_dataset(self.dataset_id)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Processing complete")
+```
+
+Deploy with event triggering:
+
+```bash
+python event_driven_flow.py argo-workflows create
+```
+
+This creates a WorkflowTemplate and an Argo Events Sensor that triggers the workflow when the event arrives.
+
+### Workflow Chaining with @trigger_on_finish
+
+Chain workflows together:
+
+```python
+from metaflow import FlowSpec, step, kubernetes, trigger_on_finish
+
+@trigger_on_finish(flows=['DataPreparationFlow'])
+class ModelTrainingFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        # This workflow automatically starts when DataPreparationFlow succeeds
+        from metaflow import current
+        
+        # Access triggering flow information
+        trigger_info = current.trigger.triggers[0]
+        print(f"Triggered by: {trigger_info['flow']}")
+        print(f"Run ID: {trigger_info['id']}")
+        
+        self.next(self.train)
+    
+    @kubernetes(cpu=8, memory=32000, gpu=2)
+    @step
+    def train(self):
+        # Load data from upstream flow
+        upstream_run = Run(f'DataPreparationFlow/{trigger_info["id"]}')
+        data = upstream_run.data.prepared_data
+        
+        # Train model
+        self.model = train_model(data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Model training complete")
+```
+
+## Managing Deployments
+
+### List Deployed Workflows
+
+```bash
+python my_flow.py argo-workflows list
+```
+
+### Trigger a Workflow Manually
+
+```bash
+python my_flow.py argo-workflows trigger
+```
+
+With parameters:
+
+```bash
+python my_flow.py argo-workflows trigger --param dataset_id=abc123 --param version=2
+```
+
+### Check Workflow Status
+
+```bash
+python my_flow.py argo-workflows status --run-id argo-training-flow-abc123
+```
+
+### Delete a Deployment
+
+```bash
+python my_flow.py argo-workflows delete
+```
+
+<Warning>
+Deleting a deployment removes the WorkflowTemplate, CronWorkflow, and associated Sensors. Running workflow instances are not affected.
+</Warning>
+
+### Suspend and Resume Workflows
+
+Suspend a running workflow:
+
+```bash
+python my_flow.py argo-workflows suspend --run-id argo-training-flow-abc123
+```
+
+Resume a suspended workflow:
+
+```bash
+python my_flow.py argo-workflows unsuspend --run-id argo-training-flow-abc123
+```
+
+### Terminate a Running Workflow
+
+```bash
+python my_flow.py argo-workflows terminate --run-id argo-training-flow-abc123
+```
+
+## Deployment Options
+
+### Workflow Timeout
+
+Set a maximum runtime for the entire workflow:
+
+```bash
+python my_flow.py argo-workflows create --workflow-timeout 7200  # 2 hours
+```
+
+### Workflow Priority
+
+Set workflow priority for resource contention:
+
+```bash
+python my_flow.py argo-workflows create --workflow-priority 100
+```
+
+Higher priority workflows are scheduled first when the cluster has limited capacity.
+
+### Maximum Parallelism
+
+Limit concurrent tasks:
+
+```bash
+python my_flow.py argo-workflows create --max-workers 10
+```
+
+This ensures no more than 10 tasks run simultaneously, useful for rate-limiting external API calls.
+
+### Notifications
+
+Enable notifications for workflow completion:
+
+```bash
+python my_flow.py argo-workflows create \
+  --notify-on-error \
+  --notify-on-success \
+  --notify-slack-webhook-url https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+```
+
+Supported notification channels:
+- Slack (via webhook URL)
+- PagerDuty (via integration key)
+- Incident.io (via API key)
+
+### Custom Workflow Names
+
+Use the `--name` flag to customize the deployment name:
+
+```bash
+python my_flow.py argo-workflows create --name prod-training-v2
+```
+
+<Note>
+Workflow names must follow Kubernetes naming conventions: lowercase alphanumeric characters, dashes, and dots, up to 253 characters.
+</Note>
+
+## Argo Workflows UI
+
+Access the Argo Workflows UI to monitor and manage your workflows:
+
+```bash
+# Port forward to access the UI
+kubectl -n argo port-forward deployment/argo-server 2746:2746
+```
+
+Then navigate to http://localhost:2746 in your browser.
+
+### UI Features
+
+- **Workflow List**: View all workflow templates and running instances
+- **DAG Visualization**: See the execution graph of your flow
+- **Live Logs**: Stream logs from running tasks
+- **Resource Usage**: Monitor CPU, memory, and GPU utilization
+- **Artifacts**: View input/output artifacts (if configured)
+- **Resubmit**: Re-run workflows with the same or different parameters
+
+## Advanced Patterns
+
+### Parallel Execution with Foreach
+
+Metaflow's `foreach` branches automatically parallelize in Argo:
+
+```python
+@step
+def start(self):
+    self.datasets = ['dataset_1', 'dataset_2', 'dataset_3']
+    self.next(self.process, foreach='datasets')
+
+@kubernetes(cpu=4, memory=16000)
+@step
+def process(self):
+    # Each dataset processes in parallel
+    self.result = process_dataset(self.input)
+    self.next(self.join)
+
+@step
+def join(self, inputs):
+    # Merge results from parallel branches
+    self.all_results = [inp.result for inp in inputs]
+    self.next(self.end)
+```
+
+### Multi-Node Distributed Training
+
+Combine `@kubernetes` with `@parallel` for distributed training:
+
+```python
+from metaflow import kubernetes, parallel
+
+@kubernetes(cpu=8, memory=32000, gpu=1)
+@parallel(num_nodes=4)
+@step
+def distributed_training(self):
+    from metaflow import current
+    
+    # Set up distributed training
+    rank = current.parallel.node_index
+    world_size = current.parallel.num_nodes
+    master_addr = current.parallel.main_ip
+    
+    # Initialize process group
+    import torch.distributed as dist
+    dist.init_process_group(
+        backend='nccl',
+        init_method=f'tcp://{master_addr}:29500',
+        rank=rank,
+        world_size=world_size
+    )
+    
+    # Your distributed training code
+    model = train_distributed(rank, world_size)
+    
+    self.next(self.end)
+```
+
+### Conditional Branching
+
+Use conditional branches that map to Argo Workflows:
+
+```python
+@step
+def start(self):
+    self.data_size = check_data_size()
+    self.next(self.branch_by_size)
+
+@step
+def branch_by_size(self):
+    if self.data_size < 1000:
+        self.next(self.small_process)
+    else:
+        self.next(self.large_process)
+
+@kubernetes(cpu=2, memory=8000)
+@step
+def small_process(self):
+    # Process small dataset
+    self.next(self.end)
+
+@kubernetes(cpu=16, memory=64000)
+@step
+def large_process(self):
+    # Process large dataset with more resources
+    self.next(self.end)
+```
+
+## Monitoring and Observability
+
+### Access Workflow Metadata
+
+Retrieve metadata about deployments and executions:
+
+```python
+from metaflow import Flow, Run
+
+# Get the latest production run
+run = Flow('TrainingFlow').latest_run
+
+# Access Argo-specific metadata
+for task in run['train']:
+    argo_metadata = task.metadata_dict
+    print(f"Workflow Name: {argo_metadata.get('argo-workflow-name')}")
+    print(f"Template: {argo_metadata.get('argo-workflow-template')}")
+    print(f"Namespace: {argo_metadata.get('argo-workflow-namespace')}")
+```
+
+### Custom Metrics
+
+Export metrics from your workflows:
+
+```python
+from metaflow import current
+
+@kubernetes(cpu=4, memory=16000)
+@step
+def train(self):
+    # Your training code
+    accuracy = train_model()
+    
+    # Export custom metric (accessible in Argo UI)
+    current.card.append_metric('accuracy', accuracy)
+    current.card.append_metric('training_time', time.time() - start)
+    
+    self.next(self.end)
+```
+
+### Integration with Observability Tools
+
+Configure OpenTelemetry for distributed tracing:
+
+```bash
+export METAFLOW_OTEL_ENDPOINT=http://otel-collector:4317
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Workflow Doesn't Start">
+    **Check ServiceAccount Permissions**:
+    ```bash
+    kubectl get serviceaccount metaflow-sa -n argo
+    kubectl describe rolebinding metaflow-rolebinding -n argo
+    ```
+    
+    **Verify WorkflowTemplate**:
+    ```bash
+    kubectl get workflowtemplates -n argo
+    kubectl describe workflowtemplate <name> -n argo
+    ```
+  </Accordion>
+  
+  <Accordion title="Task Fails to Execute">
+    **Check Pod Status**:
+    ```bash
+    kubectl get pods -n argo -l workflows.argoproj.io/workflow=<workflow-name>
+    ```
+    
+    **View Pod Events**:
+    ```bash
+    kubectl describe pod <pod-name> -n argo
+    ```
+    
+    **Common Issues**:
+    - Image pull errors: Check image name and registry credentials
+    - Resource limits: Verify node capacity
+    - PVC mount failures: Ensure PVC exists and is bound
+  </Accordion>
+  
+  <Accordion title="Scheduled Workflow Not Triggering">
+    **Check CronWorkflow**:
+    ```bash
+    kubectl get cronworkflows -n argo
+    kubectl describe cronworkflow <name> -n argo
+    ```
+    
+    **Verify Schedule**:
+    ```python
+    # Test cron expression
+    from croniter import croniter
+    from datetime import datetime
+    
+    cron = croniter('0 2 * * *', datetime.now())
+    print(f"Next run: {cron.get_next(datetime)}")
+    ```
+  </Accordion>
+  
+  <Accordion title="Event-Triggered Workflow Not Working">
+    **Check Sensor Status**:
+    ```bash
+    kubectl get sensors -n argo-events
+    kubectl logs -n argo-events <sensor-pod-name>
+    ```
+    
+    **Verify EventSource**:
+    ```bash
+    kubectl get eventsources -n argo-events
+    kubectl describe eventsource <name> -n argo-events
+    ```
+    
+    **Test Event Publishing**:
+    ```bash
+    curl -X POST http://<webhook-url> \
+      -H "Content-Type: application/json" \
+      -d '{"name": "test-event", "payload": {}}'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Resource Right-Sizing" icon="gauge">
+    Start with conservative resource estimates and adjust based on actual usage visible in the Argo UI.
+  </Card>
+  <Card title="Workflow Organization" icon="folder-tree">
+    Use meaningful names and tags to organize workflows. Group related workflows using the `@project` decorator.
+  </Card>
+  <Card title="Error Handling" icon="shield-halved">
+    Use `@retry` and `@catch` decorators to handle transient failures gracefully.
+  </Card>
+  <Card title="Cost Optimization" icon="dollar-sign">
+    Set appropriate timeouts with `@timeout` and use workflow-level limits with `--workflow-timeout`.
+  </Card>
+</CardGroup>
+
+## Production Checklist
+
+<Steps>
+  <Step title="Security">
+    - [ ] Configure RBAC with least-privilege principles
+    - [ ] Use Kubernetes secrets for sensitive data
+    - [ ] Enable pod security policies
+    - [ ] Set up network policies for namespace isolation
+  </Step>
+  
+  <Step title="Reliability">
+    - [ ] Configure retries for transient failures
+    - [ ] Set appropriate timeouts
+    - [ ] Implement health checks
+    - [ ] Test failure scenarios
+  </Step>
+  
+  <Step title="Monitoring">
+    - [ ] Enable workflow notifications
+    - [ ] Set up log aggregation
+    - [ ] Configure metrics collection
+    - [ ] Create alerting rules
+  </Step>
+  
+  <Step title="Resource Management">
+    - [ ] Set resource quotas per namespace
+    - [ ] Configure cluster autoscaling
+    - [ ] Implement pod disruption budgets
+    - [ ] Use priority classes
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Reference" icon="gear" href="/orchestrators/kubernetes/configuration">
+    Explore all Kubernetes and Argo configuration options
+  </Card>
+  <Card title="Kubernetes Overview" icon="dharmachakra" href="/orchestrators/kubernetes/overview">
+    Learn more about Kubernetes execution in Metaflow
+  </Card>
+  <Card title="Scheduling" icon="clock" href="/production/scheduling">
+    Deep dive into scheduling strategies
+  </Card>
+  <Card title="Event Triggering" icon="bolt" href="/production/event-triggering">
+    Master event-driven workflow patterns
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Argo Workflows Documentation](https://argoproj.github.io/argo-workflows/)
+- [Argo Events Documentation](https://argoproj.github.io/argo-events/)
+- [Metaflow on Kubernetes Examples](https://github.com/Netflix/metaflow/tree/master/examples)

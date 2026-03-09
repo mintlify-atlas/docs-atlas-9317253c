@@ -1,0 +1,259 @@
+---
+title: Parameter
+---
+
+# Parameter
+
+Defines a parameter for a flow.
+
+## Usage
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class MyFlow(FlowSpec):
+    alpha = Parameter('alpha',
+                      help='Learning rate',
+                      default=0.01)
+    
+    @step
+    def start(self):
+        print(f"Alpha value: {self.alpha}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Run with:
+```bash
+python myflow.py run --alpha=0.05
+```
+
+## Description
+
+Parameters must be instantiated as class variables in flow classes. The parameter is specified on the command line and its value is accessible through a read-only artifact.
+
+Note that the user-visible parameter name can be different from the artifact name.
+
+```python
+class MyFlow(FlowSpec):
+    param = Parameter('myparam')  # CLI: --myparam
+```
+
+The parameter value is converted to a Python type based on the `type` argument or to match the type of `default`, if it is set.
+
+## Constructor
+
+```python
+Parameter(
+    name: str,
+    default: Optional[Union[str, float, int, bool, Dict[str, Any], Callable]] = None,
+    type: Optional[Union[Type[str], Type[float], Type[int], Type[bool], JSONTypeClass]] = None,
+    help: Optional[str] = None,
+    required: Optional[bool] = None,
+    show_default: Optional[bool] = None,
+    **kwargs: Dict[str, Any]
+)
+```
+
+<ParamField path="name" type="str" required>
+  User-visible parameter name.
+</ParamField>
+
+<ParamField path="default" type="str | float | int | bool | Dict[str, Any] | Callable" default="None">
+  Default value for the parameter. Use a special `JSONType` class to
+  indicate that the value must be a valid JSON object. A function
+  implies that the parameter corresponds to a *deploy-time parameter*.
+  The type of the default value is used as the parameter `type`.
+</ParamField>
+
+<ParamField path="type" type="Type" default="None">
+  If `default` is not specified, define the parameter type. Specify
+  one of `str`, `float`, `int`, `bool`, or `JSONType`. If None, defaults
+  to the type of `default` or `str` if none specified.
+</ParamField>
+
+<ParamField path="help" type="str" default="None">
+  Help text to show in `run --help`.
+</ParamField>
+
+<ParamField path="required" type="bool" default="None">
+  Require that the user specifies a value for the parameter. Note that if
+  a default is provided, the required flag is ignored.
+  A value of None is equivalent to False.
+</ParamField>
+
+<ParamField path="show_default" type="bool" default="None">
+  If True, show the default value in the help text. A value of None is equivalent
+  to True.
+</ParamField>
+
+## Examples
+
+### String parameter
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class MyFlow(FlowSpec):
+    name = Parameter('name',
+                     help='User name',
+                     default='World')
+    
+    @step
+    def start(self):
+        print(f"Hello, {self.name}!")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Numeric parameters
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class MyFlow(FlowSpec):
+    alpha = Parameter('alpha',
+                      type=float,
+                      help='Learning rate',
+                      default=0.01)
+    
+    epochs = Parameter('epochs',
+                       type=int,
+                       help='Number of epochs',
+                       default=10)
+    
+    @step
+    def start(self):
+        print(f"Training for {self.epochs} epochs with alpha={self.alpha}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Boolean parameter
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class MyFlow(FlowSpec):
+    verbose = Parameter('verbose',
+                        type=bool,
+                        help='Enable verbose output',
+                        default=False)
+    
+    @step
+    def start(self):
+        if self.verbose:
+            print("Verbose mode enabled")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### JSON parameter
+
+```python
+from metaflow import FlowSpec, Parameter, JSONType, step
+
+class MyFlow(FlowSpec):
+    config = Parameter('config',
+                       type=JSONType,
+                       help='Configuration object',
+                       default='{"key": "value"}')
+    
+    @step
+    def start(self):
+        print(f"Config: {self.config}")
+        print(f"Key value: {self.config['key']}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Run with:
+```bash
+python myflow.py run --config='{"key": "new_value", "count": 42}'
+```
+
+### Required parameter
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class MyFlow(FlowSpec):
+    input_file = Parameter('input-file',
+                           help='Path to input file',
+                           required=True)
+    
+    @step
+    def start(self):
+        print(f"Processing {self.input_file}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Deploy-time parameter
+
+Deploy-time parameters are evaluated when deploying to a scheduler (e.g., AWS Step Functions):
+
+```python
+from metaflow import FlowSpec, Parameter, step
+import datetime
+
+class MyFlow(FlowSpec):
+    deploy_time = Parameter('deploy-time',
+                            default=lambda ctx: datetime.datetime.now().isoformat())
+    
+    @step
+    def start(self):
+        print(f"Deployed at: {self.deploy_time}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Properties
+
+<ParamField path="name" type="str">
+  The user-visible name of the parameter.
+</ParamField>
+
+<ParamField path="separator" type="str | None">
+  If set, the parameter value will be split by this separator.
+  Only valid for string parameters.
+</ParamField>
+
+<ParamField path="is_string_type" type="bool">
+  Returns True if the parameter is a string type.
+</ParamField>
+
+## Special Types
+
+### JSONType
+
+Use `JSONType` to accept JSON objects as parameters:
+
+```python
+from metaflow import JSONType, Parameter
+
+config = Parameter('config', type=JSONType)
+```
+
+The parameter will be parsed as JSON and accessible as a Python dictionary.

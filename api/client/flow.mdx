@@ -1,0 +1,225 @@
+---
+title: Flow
+---
+
+A `Flow` represents all existing flows with a certain name, in other words, classes derived from `FlowSpec`.
+
+It is a container of `Run` objects for a particular flow.
+
+## Constructor
+
+```python
+Flow(pathspec: Optional[str] = None)
+```
+
+### Parameters
+
+<ParamField path="pathspec" type="str" optional>
+  Flow name (e.g., 'MyFlow'). Can also be None.
+</ParamField>
+
+## Properties
+
+### id
+
+```python
+id: str
+```
+
+The flow ID (name).
+
+### latest_run
+
+```python
+latest_run: Optional[Run]
+```
+
+Returns the latest run (either in progress or completed) of this flow.
+
+Note that an in-progress run may be returned by this call. Use `latest_successful_run` to get an object representing a completed successful run.
+
+**Returns:** Latest `Run` of this flow or None.
+
+### latest_successful_run
+
+```python
+latest_successful_run: Optional[Run]
+```
+
+Returns the latest successful run of this flow.
+
+**Returns:** Latest successful `Run` of this flow or None.
+
+### tags
+
+```python
+tags: FrozenSet[str]
+```
+
+Tags associated with the run this object belongs to (user and system tags).
+
+### user_tags
+
+```python
+user_tags: FrozenSet[str]
+```
+
+User tags associated with the run this object belongs to.
+
+### system_tags
+
+```python
+system_tags: FrozenSet[str]
+```
+
+System tags associated with the run this object belongs to.
+
+### created_at
+
+```python
+created_at: datetime
+```
+
+Date and time this object was first created.
+
+### pathspec
+
+```python
+pathspec: str
+```
+
+Pathspec of this object (e.g., 'FlowName').
+
+### path_components
+
+```python
+path_components: List[str]
+```
+
+Components of the pathspec as a list.
+
+## Methods
+
+### runs()
+
+```python
+runs(*tags: str) -> Iterator[Run]
+```
+
+Returns an iterator over all `Run`s of this flow.
+
+An optional filter is available that allows you to filter on tags. If multiple tags are specified, only runs that have all the specified tags are returned.
+
+**Parameters:**
+- `tags` (str): Tags to match
+
+**Yields:** `Run` objects in this flow.
+
+### \_\_iter\_\_()
+
+```python
+__iter__() -> Iterator[Run]
+```
+
+Iterate over all children `Run` of this `Flow`.
+
+Note that only runs in the current namespace are returned unless `_namespace_check` is False.
+
+**Yields:** `Run` objects in this Flow.
+
+### \_\_getitem\_\_()
+
+```python
+__getitem__(run_id: str) -> Run
+```
+
+Returns the `Run` object with the run ID `run_id`.
+
+**Parameters:**
+- `run_id` (str): Run ID
+
+**Returns:** `Run` for this run ID in this Flow.
+
+**Raises:** `KeyError` if the run_id does not identify a valid Run object.
+
+### \_\_contains\_\_()
+
+```python
+__contains__(id: str) -> bool
+```
+
+Tests whether a child named 'id' exists.
+
+**Parameters:**
+- `id` (str): Name of the child object
+
+**Returns:** True if the child exists or False otherwise.
+
+### is_in_namespace()
+
+```python
+is_in_namespace() -> bool
+```
+
+Returns whether this object is in the current namespace.
+
+If the current namespace is None, this will always return True.
+
+**Returns:** Whether or not the object is in the current namespace.
+
+## Usage Examples
+
+### Access a flow and its runs
+
+```python
+from metaflow import Flow
+
+flow = Flow('MyFlow')
+print(f"Latest run: {flow.latest_run}")
+
+# Iterate over all runs
+for run in flow:
+    print(f"Run {run.id}: finished={run.finished}")
+```
+
+### Get latest successful run
+
+```python
+from metaflow import Flow
+
+flow = Flow('MyFlow')
+run = flow.latest_successful_run
+
+if run:
+    print(f"Latest successful run: {run.id}")
+    print(f"Data: {run.data}")
+else:
+    print("No successful runs found")
+```
+
+### Filter runs by tags
+
+```python
+from metaflow import Flow
+
+flow = Flow('MyFlow')
+
+# Get all runs with specific tags
+for run in flow.runs('production', 'v2'):
+    print(f"Production v2 run: {run.id}")
+```
+
+### Access a specific run
+
+```python
+from metaflow import Flow
+
+flow = Flow('MyFlow')
+run = flow['123']
+print(f"Run finished at: {run.finished_at}")
+```
+
+## Related
+
+- [Run](/api/client/run) - Run class for accessing run objects
+- [Metaflow](/api/client/metaflow) - Entry point to the Metaflow universe

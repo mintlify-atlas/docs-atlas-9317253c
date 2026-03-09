@@ -1,0 +1,339 @@
+---
+title: "@kubernetes"
+---
+
+The `@kubernetes` decorator specifies that a step should execute on Kubernetes.
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, kubernetes
+
+class MyFlow(FlowSpec):
+    @kubernetes(cpu=4, memory=16384)
+    @step
+    def process(self):
+        # This step runs on Kubernetes
+        pass
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+## Description
+
+The `@kubernetes` decorator enables steps to run on Kubernetes clusters, providing container orchestration and resource management. Kubernetes offers flexible deployment options and supports various cloud providers.
+
+## Prerequisites
+
+- Kubernetes cluster configured
+- Cloud datastore configured (`--datastore=s3`, `--datastore=azure`, or `--datastore=gs`)
+- Kubernetes Python package installed: `pip install kubernetes`
+
+## Parameters
+
+<ParamField path="cpu" type="int" default="1">
+  Number of CPUs required for this step. If `@resources` is also present, the maximum value from all decorators is used.
+</ParamField>
+
+<ParamField path="memory" type="int" default="4096">
+  Memory size (in MB) required for this step. If `@resources` is also present, the maximum value from all decorators is used.
+</ParamField>
+
+<ParamField path="disk" type="int" default="10240">
+  Disk size (in MB) required for this step. If `@resources` is also present, the maximum value from all decorators is used.
+</ParamField>
+
+<ParamField path="gpu" type="int" default="None">
+  Number of GPUs required for this step. A value of 0 implies that the scheduled node should not have GPUs.
+</ParamField>
+
+<ParamField path="image" type="str" default="None">
+  Docker image to use when launching on Kubernetes. If not specified and `METAFLOW_KUBERNETES_CONTAINER_IMAGE` is set, that image is used. Otherwise, defaults to a Python image matching your Python version.
+</ParamField>
+
+<ParamField path="namespace" type="str" default="METAFLOW_KUBERNETES_NAMESPACE">
+  Kubernetes namespace to use when launching pod.
+</ParamField>
+
+<ParamField path="service_account" type="str" default="METAFLOW_KUBERNETES_SERVICE_ACCOUNT">
+  Kubernetes service account to use when launching pod.
+</ParamField>
+
+<ParamField path="secrets" type="List[str]" default="None">
+  Kubernetes secrets to use when launching pod. These are in addition to secrets defined in `METAFLOW_KUBERNETES_SECRETS`.
+</ParamField>
+
+<ParamField path="node_selector" type="Union[Dict[str,str], str]" default="None">
+  Kubernetes node selector(s) to apply to the pod. Can be passed as a comma-separated string like `'kubernetes.io/os=linux,kubernetes.io/arch=amd64'` or as a dictionary `{'kubernetes.io/os': 'linux', 'kubernetes.io/arch': 'amd64'}`.
+</ParamField>
+
+<ParamField path="tolerations" type="List[Dict[str,str]]" default="[]">
+  Kubernetes tolerations to use when launching pod. Default is extracted from `METAFLOW_KUBERNETES_TOLERATIONS`.
+</ParamField>
+
+<ParamField path="labels" type="Dict[str, str]" default="METAFLOW_KUBERNETES_LABELS">
+  Kubernetes labels to apply to the pod.
+</ParamField>
+
+<ParamField path="annotations" type="Dict[str, str]" default="METAFLOW_KUBERNETES_ANNOTATIONS">
+  Kubernetes annotations to apply to the pod.
+</ParamField>
+
+<ParamField path="gpu_vendor" type="str" default="KUBERNETES_GPU_VENDOR">
+  The vendor of the GPUs to be used for this step (e.g., 'nvidia', 'amd').
+</ParamField>
+
+<ParamField path="image_pull_policy" type="str" default="KUBERNETES_IMAGE_PULL_POLICY">
+  The imagePullPolicy to apply to the Docker image of the step.
+</ParamField>
+
+<ParamField path="image_pull_secrets" type="List[str]" default="[]">
+  Kubernetes image pull secrets to use when pulling container images. Default is extracted from `METAFLOW_KUBERNETES_IMAGE_PULL_SECRETS`.
+</ParamField>
+
+<ParamField path="persistent_volume_claims" type="Dict[str, str]" default="None">
+  A map of persistent volumes to mount to the pod. The map is from persistent volume claim names to mount paths, e.g., `{'pvc-name': '/path/to/mount/on'}`.
+</ParamField>
+
+<ParamField path="shared_memory" type="int" default="None">
+  Shared memory size (in MiB) required for this step.
+</ParamField>
+
+<ParamField path="use_tmpfs" type="bool" default="False">
+  Enable an explicit tmpfs mount for this step.
+</ParamField>
+
+<ParamField path="tmpfs_tempdir" type="bool" default="True">
+  Sets `METAFLOW_TEMPDIR` to `tmpfs_path` if enabled.
+</ParamField>
+
+<ParamField path="tmpfs_size" type="int" default="None">
+  The size (in MiB) of the tmpfs mount for this step. Defaults to 50% of allocated memory.
+</ParamField>
+
+<ParamField path="tmpfs_path" type="str" default="/metaflow_temp">
+  Path to tmpfs mount for this step.
+</ParamField>
+
+<ParamField path="port" type="int" default="None">
+  Port number to specify in the Kubernetes job object.
+</ParamField>
+
+<ParamField path="compute_pool" type="str" default="None">
+  Compute pool to use for this step. If not specified, any accessible compute pool within the perimeter is used.
+</ParamField>
+
+<ParamField path="qos" type="str" default="Burstable">
+  Quality of Service class to assign to the pod. Supported values: `Guaranteed`, `Burstable`, `BestEffort`.
+</ParamField>
+
+<ParamField path="security_context" type="Dict[str, Any]" default="None">
+  Container security context. Applies to the task container. Supported keys:
+  - `privileged` (bool)
+  - `allow_privilege_escalation` (bool)
+  - `run_as_user` (int)
+  - `run_as_group` (int)
+  - `run_as_non_root` (bool)
+</ParamField>
+
+<ParamField path="hostname_resolution_timeout" type="int" default="600">
+  Timeout in seconds for worker tasks to resolve the hostname of control task. Only applicable when `@parallel` is used.
+</ParamField>
+
+## Examples
+
+### Basic Kubernetes Execution
+
+```python
+@kubernetes(cpu=4, memory=16384)
+@step
+def process_data(self):
+    # Process data on Kubernetes
+    pass
+```
+
+### GPU-Accelerated Step
+
+```python
+@kubernetes(
+    cpu=8,
+    memory=32768,
+    gpu=2,
+    gpu_vendor='nvidia'
+)
+@step
+def train_model(self):
+    import torch
+    # Train model using 2 NVIDIA GPUs
+    pass
+```
+
+### Node Selection
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=16384,
+    node_selector={
+        'kubernetes.io/arch': 'amd64',
+        'node-type': 'compute-optimized'
+    }
+)
+@step
+def compute_intensive(self):
+    pass
+```
+
+### With Tolerations
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=16384,
+    tolerations=[
+        {
+            'key': 'dedicated',
+            'operator': 'Equal',
+            'value': 'ml-workloads',
+            'effect': 'NoSchedule'
+        }
+    ]
+)
+@step
+def on_dedicated_nodes(self):
+    pass
+```
+
+### Custom Docker Image
+
+```python
+@kubernetes(
+    image='my-registry.com/ml-image:v1.2.3',
+    cpu=4,
+    memory=16384,
+    image_pull_policy='Always'
+)
+@step
+def custom_environment(self):
+    # Runs with custom dependencies
+    pass
+```
+
+### With Persistent Volumes
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=16384,
+    persistent_volume_claims={
+        'data-pvc': '/mnt/data',
+        'models-pvc': '/mnt/models'
+    }
+)
+@step
+def access_storage(self):
+    # Access persistent storage
+    with open('/mnt/data/input.csv') as f:
+        data = f.read()
+    pass
+```
+
+### With Labels and Annotations
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=8192,
+    labels={
+        'team': 'data-science',
+        'project': 'recommendation'
+    },
+    annotations={
+        'prometheus.io/scrape': 'true',
+        'prometheus.io/port': '9090'
+    }
+)
+@step
+def monitored_task(self):
+    pass
+```
+
+### Security Context
+
+```python
+@kubernetes(
+    cpu=2,
+    memory=8192,
+    security_context={
+        'run_as_user': 1000,
+        'run_as_group': 1000,
+        'run_as_non_root': True
+    }
+)
+@step
+def secure_task(self):
+    pass
+```
+
+## Runtime Override
+
+Override Kubernetes parameters at runtime:
+
+```bash
+python flow.py run --with kubernetes:cpu=8,memory=32768,gpu=1
+```
+
+## Environment Variables
+
+When running on Kubernetes, these environment variables are available:
+
+- `METAFLOW_KUBERNETES_WORKLOAD` - Indicates running on Kubernetes
+- `METAFLOW_KUBERNETES_POD_NAME` - The pod name
+- `METAFLOW_KUBERNETES_POD_NAMESPACE` - The pod namespace
+- `METAFLOW_KUBERNETES_POD_ID` - The pod ID
+- `METAFLOW_KUBERNETES_NODE_IP` - The node IP address
+
+## Best Practices
+
+1. **Use resource requests wisely**: Set CPU/memory based on actual needs
+2. **Leverage node selectors**: Use node selectors to run on appropriate hardware
+3. **Quality of Service**: Use `Guaranteed` QoS for critical workloads
+4. **Persistent storage**: Use PVCs for data that needs to persist across runs
+5. **Security**: Use security contexts to enforce least-privilege principles
+6. **Monitoring**: Add labels and annotations for observability
+
+## Common Patterns
+
+### Multi-Cloud Deployment
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=16384,
+    node_selector={'cloud.google.com/gke-nodepool': 'ml-pool'}
+)
+@step
+def gcp_task(self):
+    pass
+```
+
+### With Error Handling
+
+```python
+@retry(times=3)
+@timeout(hours=2)
+@kubernetes(cpu=4, memory=16384)
+@step
+def robust_processing(self):
+    # Retries on failure, times out after 2 hours
+    pass
+```
+
+## See Also
+
+- [@resources decorator](/api/decorators/resources)
+- [@batch decorator](/api/decorators/batch)
+- [@retry decorator](/api/decorators/retry)
+- [@timeout decorator](/api/decorators/timeout)
+- [Kubernetes Documentation](https://kubernetes.io/docs/)

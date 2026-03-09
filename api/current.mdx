@@ -1,0 +1,254 @@
+---
+title: current
+---
+
+# current
+
+The `current` object provides access to runtime information about the currently executing flow, run, step, and task.
+
+## Usage
+
+```python
+from metaflow import FlowSpec, step, current
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print(f"Flow name: {current.flow_name}")
+        print(f"Run ID: {current.run_id}")
+        print(f"Step name: {current.step_name}")
+        print(f"Task ID: {current.task_id}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Properties
+
+### is_running_flow
+
+```python
+current.is_running_flow -> bool
+```
+
+Returns True if called inside a running Flow, False otherwise.
+
+You can use this property e.g. inside a library to choose the desired
+behavior depending on the execution context.
+
+**Returns:**
+- `bool` - True if called inside a run, False otherwise.
+
+### flow_name
+
+```python
+current.flow_name -> Optional[str]
+```
+
+The name of the currently executing flow.
+
+**Returns:**
+- `str | None` - Flow name.
+
+### run_id
+
+```python
+current.run_id -> Optional[str]
+```
+
+The run ID of the currently executing run.
+
+**Returns:**
+- `str | None` - Run ID.
+
+### step_name
+
+```python
+current.step_name -> Optional[str]
+```
+
+The name of the currently executing step.
+
+**Returns:**
+- `str | None` - Step name.
+
+### task_id
+
+```python
+current.task_id -> Optional[str]
+```
+
+The task ID of the currently executing task.
+
+**Returns:**
+- `str | None` - Task ID.
+
+### retry_count
+
+```python
+current.retry_count -> int
+```
+
+The index of the task execution attempt.
+
+This property returns 0 for the first attempt to execute the task.
+If the `@retry` decorator is used and the first attempt fails, this
+property returns the number of times the task was attempted prior
+to the current attempt.
+
+**Returns:**
+- `int` - The retry count.
+
+### origin_run_id
+
+```python
+current.origin_run_id -> Optional[str]
+```
+
+The run ID of the original run this run was resumed from.
+
+This property returns None for ordinary runs. If the run
+was started by the resume command, the property returns
+the ID of the original run.
+
+You can use this property to detect if the run is resumed
+or not.
+
+**Returns:**
+- `str | None` - Run ID of the original run.
+
+### pathspec
+
+```python
+current.pathspec -> Optional[str]
+```
+
+Pathspec of the current task, i.e. a unique identifier of the current task.
+
+The returned string follows this format:
+```
+{flow_name}/{run_id}/{step_name}/{task_id}
+```
+
+This is a shorthand to `current.task.pathspec`.
+
+**Returns:**
+- `str | None` - Pathspec.
+
+### task
+
+```python
+current.task -> Optional[Task]
+```
+
+Task object of the current task.
+
+**Returns:**
+- `Task | None` - Current task.
+
+### run
+
+```python
+current.run -> Optional[Run]
+```
+
+Run object of the current run.
+
+**Returns:**
+- `Run | None` - Current run.
+
+### namespace
+
+```python
+current.namespace -> str
+```
+
+The current namespace.
+
+**Returns:**
+- `str` - Namespace.
+
+### username
+
+```python
+current.username -> Optional[str]
+```
+
+The name of the user who started the run, if available.
+
+**Returns:**
+- `str | None` - User name.
+
+### tempdir
+
+```python
+current.tempdir -> Optional[str]
+```
+
+Currently configured temporary directory.
+
+**Returns:**
+- `str | None` - Temporary directory.
+
+### graph
+
+```python
+current.graph
+```
+
+Graph information for the current flow. This property provides access to the flow's graph structure including steps and their relationships.
+
+## Examples
+
+### Accessing runtime information
+
+```python
+from metaflow import FlowSpec, step, current
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print(f"Running {current.flow_name}/{current.run_id}")
+        print(f"Current step: {current.step_name}")
+        print(f"Task ID: {current.task_id}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Detecting resumed runs
+
+```python
+from metaflow import FlowSpec, step, current
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        if current.origin_run_id:
+            print(f"This run was resumed from {current.origin_run_id}")
+        else:
+            print("This is a fresh run")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Using in library code
+
+```python
+from metaflow import current
+
+def my_library_function():
+    if current.is_running_flow:
+        # Running inside Metaflow
+        print(f"Logging to Metaflow task {current.pathspec}")
+    else:
+        # Running outside Metaflow
+        print("Logging to stdout")
+```

@@ -1,0 +1,274 @@
+---
+title: 'Runner'
+description: 'Execute Metaflow flows programmatically'
+---
+
+## Overview
+
+The `Runner` class provides a programmatic interface to run Metaflow flows either synchronously or asynchronously. It presents an alternative to running flows from the command line, allowing you to integrate flow execution into Python applications.
+
+## Usage
+
+The `Runner` class works as a context manager, automatically cleaning up temporary files at exit.
+
+```python
+from metaflow import Runner
+
+with Runner('myflow.py', pylint=False) as runner:
+    result = runner.run(alpha=5, tags=["abc", "def"])
+    print(result.run.finished)
+```
+
+## Constructor
+
+### `Runner(flow_file, show_output=True, profile=None, env=None, cwd=None, file_read_timeout=3600, **kwargs)`
+
+Create a new Runner instance for executing a flow.
+
+**Parameters:**
+
+<ParamField path="flow_file" type="str" required>
+  Path to the flow file to run, relative to the current directory.
+</ParamField>
+
+<ParamField path="show_output" type="bool" default="True">
+  Show the stdout and stderr to the console by default. Only applicable for synchronous `run` and `resume` functions.
+</ParamField>
+
+<ParamField path="profile" type="str" default="None">
+  Metaflow profile to use to run this flow. If not specified, the default profile is used (or the one already set using `METAFLOW_PROFILE`).
+</ParamField>
+
+<ParamField path="env" type="Dict[str, str]" default="None">
+  Additional environment variables to set for the run. This overrides the environment set for this process.
+</ParamField>
+
+<ParamField path="cwd" type="str" default="None">
+  The directory to run the subprocess in. If not specified, the current directory is used.
+</ParamField>
+
+<ParamField path="file_read_timeout" type="int" default="3600">
+  The timeout in seconds until which we try to read the runner attribute file.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` before the `run` command.
+</ParamField>
+
+## Methods
+
+### `run(**kwargs)`
+
+Blocking execution of the flow. This method will wait until the run has completed execution.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `run` command, in particular, any parameters accepted by the flow.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object containing the results of the run.
+
+**Example:**
+
+```python
+with Runner('myflow.py') as runner:
+    result = runner.run(alpha=5, max_workers=10)
+    print(result.run.finished)
+    print(result.status)
+```
+
+### `async_run(**kwargs)`
+
+Non-blocking execution of the flow. This method will return as soon as the run has launched.
+
+**Note:** This method is asynchronous and needs to be `await`ed.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `run` command, in particular, any parameters accepted by the flow.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object representing the run that was started.
+
+**Example:**
+
+```python
+import asyncio
+
+async def main():
+    async with Runner('myflow.py') as runner:
+        result = await runner.async_run(alpha=5)
+        # Run is now started but may not be finished
+        await result.wait()  # Wait for completion
+        print(result.run.finished)
+
+asyncio.run(main())
+```
+
+### `resume(**kwargs)`
+
+Blocking resume execution of a previously failed run. This method will wait until the resumed run has completed execution.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `resume` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object containing the results of the resumed run.
+
+**Example:**
+
+```python
+with Runner('myflow.py') as runner:
+    result = runner.resume()
+    print(result.run.finished)
+```
+
+### `async_resume(**kwargs)`
+
+Non-blocking resume execution of a previously failed run. This method will return as soon as the resume has launched.
+
+**Note:** This method is asynchronous and needs to be `await`ed.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `resume` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object representing the resumed run that was started.
+
+### `spin(pathspec, **kwargs)`
+
+Blocking spin execution to re-execute a specific task or step. This method will wait until the spun task has completed execution.
+
+**Parameters:**
+
+<ParamField path="pathspec" type="str" required>
+  The pathspec of the step/task to spin (e.g., "MyFlow/123/start/456").
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `spin` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingTask` - An ExecutingTask object containing the results of the spun task.
+
+### `async_spin(pathspec, **kwargs)`
+
+Non-blocking spin execution. This method will return as soon as the spun task has launched.
+
+**Note:** This method is asynchronous and needs to be `await`ed.
+
+**Parameters:**
+
+<ParamField path="pathspec" type="str" required>
+  The pathspec of the step/task to spin.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `spin` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingTask` - An ExecutingTask object representing the spun task that was started.
+
+### `cleanup()`
+
+Delete any temporary files created during execution. This is automatically called when using the Runner as a context manager.
+
+**Example:**
+
+```python
+runner = Runner('myflow.py')
+result = runner.run()
+runner.cleanup()  # Manual cleanup if not using context manager
+```
+
+## ExecutingRun
+
+The `ExecutingRun` class represents a currently executing or finished run. It is returned by the `run()`, `async_run()`, `resume()`, and `async_resume()` methods.
+
+### Properties
+
+**`run`** - `metaflow.Run`
+
+The Metaflow Run object representing the currently executing or finished run.
+
+**`status`** - `str`
+
+Returns the status of the underlying subprocess. One of:
+- `running` - Currently executing run
+- `successful` - Successfully completed run
+- `failed` - Failed run
+- `timeout` - Run timed out
+
+**`returncode`** - `Optional[int]`
+
+The return code of the underlying subprocess. A non-zero code indicates failure, `None` indicates a currently executing run.
+
+**`stdout`** - `str`
+
+Returns the current stdout of the run. If the run is finished, this contains the entire stdout output.
+
+**`stderr`** - `str`
+
+Returns the current stderr of the run. If the run is finished, this contains the entire stderr output.
+
+### Methods
+
+**`async wait(timeout=None, stream=None)`**
+
+Wait for the run to finish, optionally with a timeout and optionally streaming its output.
+
+**Note:** This method is asynchronous and needs to be `await`ed.
+
+**Parameters:**
+- `timeout` (float, optional) - Maximum time in seconds to wait for the run to finish. If None, wait forever.
+- `stream` (str, optional) - If specified, the specified stream is printed to stdout. Can be `stdout` or `stderr`.
+
+**Returns:** The ExecutingRun object, allowing you to chain calls.
+
+**`async stream_log(stream, position=None)`**
+
+Asynchronous iterator to stream logs from the subprocess line by line.
+
+**Note:** This method is asynchronous and needs to be `await`ed.
+
+**Parameters:**
+- `stream` (str) - The stream to stream logs from. Can be `stdout` or `stderr`.
+- `position` (int, optional) - The position in the log file to start streaming from. If None, starts from the beginning.
+
+**Yields:** Tuple[int, str] - A tuple containing the position in the log file and the line read.
+
+## ExecutingTask
+
+The `ExecutingTask` class represents a currently executing or finished task. It is returned by the `spin()` and `async_spin()` methods. It has the same properties and methods as `ExecutingRun`, but with a `task` property instead of `run`.
+
+### Properties
+
+**`task`** - `metaflow.Task`
+
+The Metaflow Task object representing the currently executing or finished task.
+
+**`status`**, **`returncode`**, **`stdout`**, **`stderr`** - Same as ExecutingRun
+
+### Methods
+
+**`async wait(timeout=None, stream=None)`** - Same as ExecutingRun
+
+**`async stream_log(stream, position=None)`** - Same as ExecutingRun

@@ -1,0 +1,665 @@
+---
+title: "GCP Integration"
+description: "Run Metaflow workflows on Google Cloud Platform with Cloud Storage and Secret Manager"
+---
+
+Metaflow integrates with Google Cloud Platform to provide cloud storage via Google Cloud Storage and secure credential management through Secret Manager.
+
+## Overview
+
+GCP support in Metaflow includes:
+
+- **Google Cloud Storage (GCS)**: Scalable object storage for artifacts and data
+- **Secret Manager**: Secure secrets and credential management
+- **Container Registry (GCR)**: Container image storage
+- **Artifact Registry**: Next-generation artifact management
+- **Kubernetes**: Compute execution on Google Kubernetes Engine (GKE)
+
+<Note>
+  GCP compute is provided via Kubernetes. See the [Kubernetes documentation](/scaling/kubernetes) for compute configuration.
+</Note>
+
+## Setup
+
+### Prerequisites
+
+- GCP project with billing enabled
+- Google Cloud SDK (`gcloud`) installed and configured
+- Metaflow installed: `pip install metaflow`
+- GCP SDK packages: `pip install google-cloud-storage google-cloud-secret-manager`
+
+### Authentication
+
+Metaflow uses Google Application Default Credentials:
+
+```bash
+# Option 1: User account (recommended for development)
+gcloud auth application-default login
+
+# Option 2: Service Account Key
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+
+# Option 3: Compute Engine/GKE Workload Identity (automatic on GCP resources)
+# No configuration needed when running on GCP
+```
+
+### Enable Required APIs
+
+```bash
+# Enable Cloud Storage API
+gcloud services enable storage.googleapis.com
+
+# Enable Secret Manager API
+gcloud services enable secretmanager.googleapis.com
+
+# Enable Container Registry API
+gcloud services enable containerregistry.googleapis.com
+```
+
+## Google Cloud Storage
+
+Configure Metaflow to use Google Cloud Storage as the datastore.
+
+### Configuration
+
+```bash
+# Set GCS as default datastore
+export METAFLOW_DEFAULT_DATASTORE=gs
+
+# Specify bucket and path (with gs:// prefix)
+export METAFLOW_DATASTORE_SYSROOT_GS=gs://my-bucket/metaflow
+
+# Set default GCP client provider
+export METAFLOW_DEFAULT_GCP_CLIENT_PROVIDER=gcp-default
+```
+
+### Storage Bucket Setup
+
+<Steps>
+  <Step title="Create GCS Bucket">
+    ```bash
+    gsutil mb -p my-project -l us-central1 gs://my-metaflow-bucket
+    ```
+  </Step>
+  
+  <Step title="Set Bucket Permissions">
+    ```bash
+    # Grant storage admin permissions
+    gsutil iam ch user:user@example.com:roles/storage.objectAdmin gs://my-metaflow-bucket
+    
+    # Or for service account
+    gsutil iam ch serviceAccount:sa@project.iam.gserviceaccount.com:roles/storage.objectAdmin gs://my-metaflow-bucket
+    ```
+  </Step>
+  
+  <Step title="Configure Lifecycle (Optional)">
+    Create lifecycle policy for automatic cleanup:
+    ```json
+    {
+      "lifecycle": {
+        "rule": [
+          {
+            "action": {"type": "Delete"},
+            "condition": {"age": 90}
+          }
+        ]
+      }
+    }
+    ```
+    Apply policy:
+    ```bash
+    gsutil lifecycle set lifecycle.json gs://my-metaflow-bucket
+    ```
+  </Step>
+</Steps>
+
+### GCS Path Format
+
+Metaflow uses standard GCS URI format:
+
+```
+gs://<bucket-name>/<path-prefix>
+```
+
+**Examples**:
+- `gs://my-bucket/metaflow` - Bucket "my-bucket" with prefix "metaflow"
+- `gs://production-workflows/data` - Bucket "production-workflows" with prefix "data"
+
+### Using Cloud Storage in Code
+
+Metaflow automatically handles artifact storage:
+
+```python
+from metaflow import FlowSpec, step
+
+class GCPFlow(FlowSpec):
+    @step
+    def start(self):
+        # Artifacts automatically stored in GCS
+        self.data = [1, 2, 3, 4, 5]
+        self.model = train_model(self.data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Artifacts automatically retrieved from GCS
+        print(f"Model accuracy: {self.model.score}")
+```
+
+### Direct GCS Access
+
+For direct storage operations, use the Google Cloud SDK:
+
+```python
+from metaflow import FlowSpec, step
+from google.cloud import storage
+from metaflow.plugins.gcp import get_credentials
+
+class GCSAccessFlow(FlowSpec):
+    @step
+    def start(self):
+        # Create storage client with Metaflow credentials
+        credentials, project = get_credentials()
+        client = storage.Client(credentials=credentials, project=project)
+        
+        # Upload data
+        bucket = client.bucket("my-bucket")
+        blob = bucket.blob("data/input.csv")
+        blob.upload_from_filename("local_file.csv")
+        
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        # Download data
+        credentials, project = get_credentials()
+        client = storage.Client(credentials=credentials, project=project)
+        
+        bucket = client.bucket("my-bucket")
+        blob = bucket.blob("data/input.csv")
+        blob.download_to_filename("downloaded.csv")
+        
+        # Process file
+        with open("downloaded.csv", "r") as f:
+            data = f.read()
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Processing complete")
+```
+
+## GCP Secret Manager
+
+Securely manage secrets and credentials using GCP Secret Manager.
+
+### Configuration
+
+```bash
+# Set Secret Manager prefix (projects/{project-id}/secrets/)
+export METAFLOW_GCP_SECRET_MANAGER_PREFIX=projects/123456789/secrets/
+```
+
+### Secret Manager Setup
+
+<Steps>
+  <Step title="Create Secret">
+    ```bash
+    # Create secret with initial version
+    echo -n "my-secret-value" | gcloud secrets create api-key --data-file=-
+    
+    # Or create empty secret and add version later
+    gcloud secrets create database-password
+    echo -n "db-pass-123" | gcloud secrets versions add database-password --data-file=-
+    ```
+  </Step>
+  
+  <Step title="Grant Access">
+    ```bash
+    # Grant access to user
+    gcloud secrets add-iam-policy-binding api-key \
+      --member="user:user@example.com" \
+      --role="roles/secretmanager.secretAccessor"
+    
+    # Grant access to service account
+    gcloud secrets add-iam-policy-binding api-key \
+      --member="serviceAccount:sa@project.iam.gserviceaccount.com" \
+      --role="roles/secretmanager.secretAccessor"
+    ```
+  </Step>
+  
+  <Step title="Verify Access">
+    ```bash
+    # Access secret value
+    gcloud secrets versions access latest --secret="api-key"
+    ```
+  </Step>
+</Steps>
+
+### Using Secrets
+
+Metaflow's `@secrets` decorator integrates with GCP Secret Manager:
+
+```python
+from metaflow import FlowSpec, step, secrets
+
+class SecureFlow(FlowSpec):
+    @secrets(
+        sources=["gcp-secret-manager"],
+        secrets=["api-key", "database-password"]
+    )
+    @step
+    def start(self):
+        import os
+        # Secrets injected as environment variables
+        api_key = os.environ["API_KEY"]
+        db_password = os.environ["DATABASE_PASSWORD"]
+        
+        # Use secrets securely
+        self.data = fetch_data(api_key, db_password)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Fetched {len(self.data)} records")
+```
+
+### Secret Naming
+
+GCP Secret Manager secret names must:
+- Start with a letter or underscore
+- Contain only letters, numbers, underscores, and hyphens
+- Be 1-255 characters long
+- Examples: `api-key`, `database_password`, `API_TOKEN_v2`
+
+### Secret ID Formats
+
+Metaflow supports multiple secret ID formats:
+
+#### 1. Simple Name (Requires Prefix)
+
+```python
+# Uses METAFLOW_GCP_SECRET_MANAGER_PREFIX + secret name + /versions/latest
+@secrets(sources=["gcp-secret-manager"], secrets=["api-key"])
+@step
+def step_one(self):
+    import os
+    key = os.environ["API_KEY"]  # Hyphen converted to underscore
+```
+
+#### 2. Name with Version
+
+```python
+# Specific version of secret
+@secrets(sources=["gcp-secret-manager"], secrets=["api-key/versions/1"])
+@step
+def step_two(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+#### 3. Full Resource Path
+
+```python
+# Full Secret Manager resource path
+@secrets(
+    sources=["gcp-secret-manager"],
+    secrets=["projects/123456789/secrets/api-key"]
+)
+@step
+def step_three(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+#### 4. Full Path with Version
+
+```python
+# Full path with specific version
+@secrets(
+    sources=["gcp-secret-manager"],
+    secrets=["projects/123456789/secrets/api-key/versions/1"]
+)
+@step
+def step_four(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+### JSON Secrets
+
+Store structured data as JSON:
+
+```python
+# Secret stored as JSON in GCP Secret Manager:
+# {
+#   "username": "admin",
+#   "password": "secret123",
+#   "host": "db.example.com"
+# }
+
+@secrets(
+    sources=["gcp-secret-manager"],
+    secrets=[("database-config", {"json": True})]
+)
+@step
+def connect(self):
+    import os
+    # Each JSON key becomes an environment variable
+    username = os.environ["DATABASE_CONFIG_USERNAME"]
+    password = os.environ["DATABASE_CONFIG_PASSWORD"]
+    host = os.environ["DATABASE_CONFIG_HOST"]
+```
+
+### Custom Environment Variable Names
+
+```python
+@secrets(
+    sources=["gcp-secret-manager"],
+    secrets=[
+        ("api-key", {"env_var_name": "CUSTOM_API_KEY"}),
+        ("db-password", {"env_var_name": "DB_PASS"})
+    ]
+)
+@step
+def custom_names(self):
+    import os
+    api_key = os.environ["CUSTOM_API_KEY"]
+    db_pass = os.environ["DB_PASS"]
+```
+
+### Binary Secrets
+
+```python
+# For binary secrets, enable base64 encoding
+@secrets(
+    sources=["gcp-secret-manager"],
+    secrets=[("certificate-key", {"binary": True})]
+)
+@step
+def use_cert(self):
+    import os
+    import base64
+    cert_bytes = base64.b64decode(os.environ["CERTIFICATE_KEY"])
+```
+
+## Container Registry
+
+Use Google Container Registry or Artifact Registry for Docker images.
+
+### Setup with GCR
+
+<Steps>
+  <Step title="Configure Docker">
+    ```bash
+    gcloud auth configure-docker
+    ```
+  </Step>
+  
+  <Step title="Build and Push Image">
+    ```bash
+    # Build image
+    docker build -t gcr.io/my-project/my-image:v1.0 .
+    
+    # Push to GCR
+    docker push gcr.io/my-project/my-image:v1.0
+    ```
+  </Step>
+</Steps>
+
+### Setup with Artifact Registry
+
+<Steps>
+  <Step title="Create Repository">
+    ```bash
+    gcloud artifacts repositories create metaflow-images \
+      --repository-format=docker \
+      --location=us-central1
+    ```
+  </Step>
+  
+  <Step title="Configure Docker">
+    ```bash
+    gcloud auth configure-docker us-central1-docker.pkg.dev
+    ```
+  </Step>
+  
+  <Step title="Build and Push Image">
+    ```bash
+    # Build image
+    docker build -t us-central1-docker.pkg.dev/my-project/metaflow-images/my-image:v1.0 .
+    
+    # Push to Artifact Registry
+    docker push us-central1-docker.pkg.dev/my-project/metaflow-images/my-image:v1.0
+    ```
+  </Step>
+</Steps>
+
+### Using Custom Images
+
+```python
+from metaflow import FlowSpec, step, kubernetes
+
+class CustomImageFlow(FlowSpec):
+    @kubernetes(image="gcr.io/my-project/my-image:v1.0")
+    @step
+    def process(self):
+        # Runs with custom image from GCR
+        import custom_library
+        self.result = custom_library.process()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Result: {self.result}")
+```
+
+## Kubernetes Compute
+
+For compute execution on GCP, use Google Kubernetes Engine:
+
+```python
+from metaflow import FlowSpec, step, kubernetes
+
+class GCPComputeFlow(FlowSpec):
+    @kubernetes(cpu=4, memory=8000, disk=10000)
+    @step
+    def compute_step(self):
+        # Runs on GKE cluster
+        self.result = expensive_computation()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Result: {self.result}")
+```
+
+<Info>
+  See the [Kubernetes documentation](/scaling/kubernetes) for detailed GKE setup and configuration.
+</Info>
+
+## IAM Permissions
+
+Required IAM roles and permissions:
+
+### Cloud Storage Access
+
+**Role**: `roles/storage.objectAdmin`
+
+Or custom role with:
+- `storage.objects.create`
+- `storage.objects.delete`
+- `storage.objects.get`
+- `storage.objects.list`
+- `storage.buckets.get`
+
+```bash
+# Grant to user
+gcloud projects add-iam-policy-binding my-project \
+  --member="user:user@example.com" \
+  --role="roles/storage.objectAdmin" \
+  --condition=None
+
+# Grant to service account
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:sa@project.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+### Secret Manager Access
+
+**Role**: `roles/secretmanager.secretAccessor`
+
+Permissions:
+- `secretmanager.secrets.get`
+- `secretmanager.versions.access`
+
+```bash
+# Grant at project level
+gcloud projects add-iam-policy-binding my-project \
+  --member="user:user@example.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# Grant for specific secret
+gcloud secrets add-iam-policy-binding api-key \
+  --member="serviceAccount:sa@project.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+### Container Registry Access
+
+**Role**: `roles/storage.objectViewer` (for GCR)
+
+Or for Artifact Registry:
+
+**Role**: `roles/artifactregistry.reader`
+
+```bash
+# GCR access
+gcloud projects add-iam-policy-binding my-project \
+  --member="serviceAccount:sa@project.iam.gserviceaccount.com" \
+  --role="roles/storage.objectViewer"
+
+# Artifact Registry access
+gcloud artifacts repositories add-iam-policy-binding metaflow-images \
+  --location=us-central1 \
+  --member="serviceAccount:sa@project.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Storage Optimization">
+    - Use appropriate storage class (Standard, Nearline, Coldline, Archive)
+    - Implement lifecycle management policies
+    - Enable object versioning for important data
+    - Use service accounts with minimal permissions
+    - Monitor storage costs with Cloud Billing reports
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Always use service accounts over user credentials in production
+    - Enable uniform bucket-level access
+    - Use VPC Service Controls for enhanced security
+    - Rotate Secret Manager secrets regularly
+    - Enable audit logging for storage and secrets
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Choose bucket location close to compute resources
+    - Use Cloud CDN for frequently accessed objects
+    - Enable requester pays for shared buckets
+    - Use parallel uploads for large files
+    - Consider regional vs. multi-regional buckets
+  </Accordion>
+  
+  <Accordion title="Monitoring">
+    - Enable Cloud Storage audit logs
+    - Monitor Secret Manager access patterns
+    - Set up alerts for authentication failures
+    - Track storage usage and costs
+    - Use Cloud Monitoring for operational metrics
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Accordion title="Authentication Errors">
+  **Problem**: `DefaultCredentialsError` or permission denied
+  
+  **Solutions**:
+  - Run `gcloud auth application-default login`
+  - Verify service account key file exists and path is correct
+  - Check workload identity is configured on GKE
+  - Ensure service account has required IAM roles
+  - Verify project ID in credentials
+</Accordion>
+
+<Accordion title="GCS Access Denied">
+  **Problem**: Cannot read or write objects
+  
+  **Solutions**:
+  - Verify Storage Object Admin role is granted
+  - Check bucket exists and name is correct
+  - Ensure uniform bucket-level access is enabled
+  - Verify no organization policies blocking access
+  - Check VPC Service Controls if enabled
+</Accordion>
+
+<Accordion title="Secret Not Found">
+  **Problem**: Secret retrieval fails
+  
+  **Solutions**:
+  - Verify secret name and project ID are correct
+  - Check Secret Manager API is enabled
+  - Ensure secret has at least one version
+  - Verify IAM permissions for secret accessor role
+  - Check METAFLOW_GCP_SECRET_MANAGER_PREFIX is set correctly
+</Accordion>
+
+<Accordion title="Container Image Pull Failures">
+  **Problem**: Cannot pull image from registry
+  
+  **Solutions**:
+  - Verify image name and tag are correct
+  - Check service account has Artifact Registry Reader role
+  - Ensure Container Registry API is enabled
+  - Verify Kubernetes image pull secrets are configured
+  - Check network connectivity to registry
+</Accordion>
+
+## Configuration Reference
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `METAFLOW_DEFAULT_DATASTORE` | Set to "gs" | `gs` |
+| `METAFLOW_DATASTORE_SYSROOT_GS` | GCS bucket and path | `gs://my-bucket/metaflow` |
+| `METAFLOW_GCP_SECRET_MANAGER_PREFIX` | Secret Manager prefix | `projects/123456789/secrets/` |
+| `METAFLOW_DEFAULT_GCP_CLIENT_PROVIDER` | Auth provider | `gcp-default` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account key | `/path/to/key.json` |
+| `GOOGLE_CLOUD_PROJECT` | Default project ID | `my-project-id` |
+
+### Python Version Requirements
+
+GCP support requires Python 3.7 or newer.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes on GKE" icon="dharmachakra" href="/scaling/kubernetes">
+    Set up compute on Google Kubernetes Engine
+  </Card>
+  <Card title="Argo Workflows" icon="workflow" href="/production/argo-workflows">
+    Deploy production workflows on GCP
+  </Card>
+  <Card title="Multi-Cloud Overview" icon="cloud" href="/cloud/overview">
+    Compare cloud platform features
+  </Card>
+  <Card title="Secrets Management" icon="key" href="/security/secrets">
+    Advanced secrets management patterns
+  </Card>
+</CardGroup>

@@ -1,0 +1,339 @@
+---
+title: Step
+---
+
+A `Step` represents a user-defined step, that is, a method annotated with the `@step` decorator.
+
+It contains `Task` objects associated with the step, that is, all executions of the step. The step may contain multiple `Task`s in the case of a foreach step.
+
+## Constructor
+
+```python
+Step(pathspec: Optional[str] = None,
+     attempt: Optional[int] = None)
+```
+
+### Parameters
+
+<ParamField path="pathspec" type="str" optional>
+  Path to the step (e.g., 'FlowName/RunID/StepName').
+</ParamField>
+
+<ParamField path="attempt" type="int" optional>
+  Specific attempt number (only applicable to Task or DataArtifact).
+</ParamField>
+
+## Properties
+
+### id
+
+```python
+id: str
+```
+
+The step ID (step name).
+
+### task
+
+```python
+task: Optional[Task]
+```
+
+Returns a `Task` object belonging to this step.
+
+This is useful when the step only contains one task (a linear step for example).
+
+**Returns:** A task in the step or None.
+
+### finished_at
+
+```python
+finished_at: Optional[datetime]
+```
+
+Returns the datetime object of when the step finished (successfully or not).
+
+A step is considered finished when all the tasks that belong to it have finished. This call will return None if the step has not finished.
+
+**Returns:** Datetime of when the step finished.
+
+### environment_info
+
+```python
+environment_info: Optional[Dict[str, Any]]
+```
+
+Returns information about the environment that was used to execute this step.
+
+As an example, if the Conda environment is selected, this will return information about the dependencies that were used in the environment.
+
+This environment information is only available for steps that have tasks for which the code package has been saved.
+
+**Returns:** Dictionary describing the environment.
+
+### parent_steps
+
+```python
+parent_steps: Iterator[Step]
+```
+
+Yields parent steps for the current step.
+
+**Yields:** Parent `Step` objects.
+
+### child_steps
+
+```python
+child_steps: Iterator[Step]
+```
+
+Yields child steps for the current step.
+
+**Yields:** Child `Step` objects.
+
+### tags
+
+```python
+tags: FrozenSet[str]
+```
+
+Tags associated with the run this object belongs to (user and system tags).
+
+### user_tags
+
+```python
+user_tags: FrozenSet[str]
+```
+
+User tags associated with the run this object belongs to.
+
+### system_tags
+
+```python
+system_tags: FrozenSet[str]
+```
+
+System tags associated with the run this object belongs to.
+
+### created_at
+
+```python
+created_at: datetime
+```
+
+Date and time this object was first created.
+
+### parent
+
+```python
+parent: Optional[MetaflowObject]
+```
+
+Returns the parent object (Run) of this step.
+
+### pathspec
+
+```python
+pathspec: str
+```
+
+Pathspec of this object (e.g., 'FlowName/RunID/StepName').
+
+### path_components
+
+```python
+path_components: List[str]
+```
+
+Components of the pathspec.
+
+### origin_pathspec
+
+```python
+origin_pathspec: Optional[str]
+```
+
+Pathspec of the original object this object was cloned from (in the case of a resume).
+
+Returns None if not applicable.
+
+## Methods
+
+### tasks()
+
+```python
+tasks(*tags: str) -> Iterable[Task]
+```
+
+**[Legacy function - do not use]**
+
+Returns an iterator over all `Task` objects in the step. This is an alias to iterating the object itself.
+
+**Parameters:**
+- `tags` (str): No op (legacy functionality)
+
+**Yields:** `Task` objects in this step.
+
+### control_task
+
+```python
+control_task: Optional[Task]
+```
+
+**[Unpublished API - use with caution!]**
+
+Returns a Control Task object belonging to this step.
+
+This is useful when the step only contains one control task.
+
+**Returns:** A control task in the step.
+
+### control_tasks()
+
+```python
+control_tasks(*tags: str) -> Iterator[Task]
+```
+
+**[Unpublished API - use with caution!]**
+
+Returns an iterator over all the control tasks in the step.
+
+An optional filter is available that allows you to filter on tags. The control tasks returned if the filter is specified will contain all the tags specified.
+
+**Parameters:**
+- `tags` (str): Tags to match
+
+**Yields:** Control `Task` objects for this step.
+
+### \_\_iter\_\_()
+
+```python
+__iter__() -> Iterator[Task]
+```
+
+Iterate over all children `Task` of this `Step`.
+
+**Yields:** `Task` objects in this Step.
+
+### \_\_getitem\_\_()
+
+```python
+__getitem__(task_id: str) -> Task
+```
+
+Returns the `Task` object with the task ID 'task_id'.
+
+**Parameters:**
+- `task_id` (str): Task ID
+
+**Returns:** `Task` for this task ID in this Step.
+
+**Raises:** `KeyError` if the task_id does not identify a valid Task object.
+
+### \_\_contains\_\_()
+
+```python
+__contains__(id: str) -> bool
+```
+
+Tests whether a child named 'id' exists.
+
+**Parameters:**
+- `id` (str): Name of the child object
+
+**Returns:** True if the child exists or False otherwise.
+
+### is_in_namespace()
+
+```python
+is_in_namespace() -> bool
+```
+
+Returns whether this object is in the current namespace.
+
+**Returns:** Whether or not the object is in the current namespace.
+
+## Usage Examples
+
+### Access a single task
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/start')
+task = step.task
+
+if task:
+    print(f"Task ID: {task.id}")
+    print(f"Task finished: {task.finished}")
+    print(f"Task data: {task.data}")
+```
+
+### Iterate over all tasks in a foreach
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/process')
+
+for task in step:
+    print(f"Task {task.id}:")
+    print(f"  Index: {task.index}")
+    print(f"  Successful: {task.successful}")
+```
+
+### Access specific task
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/process')
+task = step['42']
+print(f"Task data: {task.data.result}")
+```
+
+### Check step completion
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/train')
+
+if step.finished_at:
+    print(f"Step finished at: {step.finished_at}")
+else:
+    print("Step is still running")
+```
+
+### Navigate step graph
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/process')
+
+print("Parent steps:")
+for parent in step.parent_steps:
+    print(f"  {parent.id}")
+
+print("Child steps:")
+for child in step.child_steps:
+    print(f"  {child.id}")
+```
+
+### Access environment info
+
+```python
+from metaflow import Step
+
+step = Step('MyFlow/123/train')
+
+if step.environment_info:
+    print(f"Environment: {step.environment_info}")
+```
+
+## Related
+
+- [Run](/api/client/run) - Parent Run object
+- [Task](/api/client/task) - Child Task objects
+- [DataArtifact](/api/client/artifact) - Access artifacts in tasks

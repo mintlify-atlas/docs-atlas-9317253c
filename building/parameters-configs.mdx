@@ -1,0 +1,689 @@
+---
+title: Parameters and Configs
+description: Making flows configurable with Parameters and Configs
+---
+
+## Overview
+
+Metaflow provides two mechanisms for making flows configurable:
+- **Parameters**: Runtime values passed via command line or API
+- **Configs**: Deploy-time configuration files for structured settings
+
+## Parameters
+
+Parameters are runtime inputs to your flow, specified when running the flow.
+
+### Basic Parameters
+
+```python
+from metaflow import FlowSpec, step, Parameter
+
+class MyFlow(FlowSpec):
+    # String parameter with default
+    username = Parameter('username',
+                        help='Name of the user',
+                        default='anonymous')
+    
+    # Integer parameter
+    batch_size = Parameter('batch-size',
+                          help='Batch size for processing',
+                          default=100,
+                          type=int)
+    
+    # Required parameter (no default)
+    api_key = Parameter('api-key',
+                       help='API key for service',
+                       required=True)
+    
+    @step
+    def start(self):
+        print(f"User: {self.username}")
+        print(f"Batch size: {self.batch_size}")
+        print(f"API key: {self.api_key}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+Run with parameters:
+
+```bash
+python myflow.py run --username Alice --batch-size 200 --api-key abc123
+```
+
+### Parameter Types
+
+From the source code:
+
+```python
+# From parameters.py:314
+type: Optional[
+    Union[Type[str], Type[float], Type[int], Type[bool], JSONTypeClass]
+] = None
+```
+
+Supported types:
+
+```python
+from metaflow import Parameter, JSONType
+
+class ParameterTypes(FlowSpec):
+    # String (default)
+    name = Parameter('name', default='test')
+    
+    # Integer
+    count = Parameter('count', type=int, default=10)
+    
+    # Float
+    rate = Parameter('rate', type=float, default=0.1)
+    
+    # Boolean
+    debug = Parameter('debug', type=bool, default=False)
+    
+    # JSON object
+    config = Parameter('config', type=JSONType, default={})
+```
+
+Usage:
+
+```bash
+# Boolean parameters
+python myflow.py run --debug  # True
+python myflow.py run --debug False  # False
+
+# JSON parameters
+python myflow.py run --config '{"key": "value", "items": [1,2,3]}'
+```
+
+### Separator for Lists
+
+Split string parameters into lists:
+
+```python
+tags = Parameter('tags',
+                help='Comma-separated tags',
+                default='ml,production',
+                separator=',')
+
+@step
+def start(self):
+    print(self.tags)  # ['ml', 'production']
+    for tag in self.tags:
+        print(f"Tag: {tag}")
+    self.next(self.end)
+```
+
+From the implementation:
+
+```python
+# From flowspec.py:493
+val = val.split(param.separator) if val and param.separator else val
+```
+
+### Deploy-Time Parameters
+
+Parameters can be functions evaluated at deploy time:
+
+```python
+from metaflow import Parameter, IncludeFile
+import datetime
+
+class DeployTimeFlow(FlowSpec):
+    # Function evaluated when scheduling
+    run_date = Parameter('run-date',
+                        default=lambda ctx: datetime.date.today().isoformat())
+    
+    # Include file content
+    config_file = IncludeFile('config',
+                             help='Configuration file',
+                             default='config.json')
+    
+    @step
+    def start(self):
+        print(f"Run date: {self.run_date}")
+        print(f"Config: {self.config_file}")
+        self.next(self.end)
+```
+
+The context object provides flow information:
+
+```python
+# From parameters.py:30
+ParameterContext = NamedTuple(
+    'ParameterContext',
+    [
+        ('flow_name', str),
+        ('user_name', str),
+        ('parameter_name', str),
+        ('logger', Callable[..., None]),
+        ('ds_type', str),
+        ('configs', Optional['ConfigValue']),
+    ],
+)
+
+def get_default_value(ctx):
+    print(f"Flow: {ctx.flow_name}")
+    print(f"User: {ctx.user_name}")
+    return f"default_for_{ctx.user_name}"
+
+my_param = Parameter('my-param', default=get_default_value)
+```
+
+### Real-World Example
+
+From the playlist tutorial:
+
+```python
+class PlayListFlow(FlowSpec):
+    movie_data = IncludeFile(
+        'movie_data',
+        help='The path to a movie metadata file.',
+        default=script_path('movies.csv')
+    )
+    
+    genre = Parameter(
+        'genre',
+        help='Filter movies for a particular genre.',
+        default='Sci-Fi'
+    )
+    
+    recommendations = Parameter(
+        'recommendations',
+        help='The number of movies to recommend in the playlist.',
+        default=5,
+        type=int
+    )
+```
+
+Run with custom parameters:
+
+```bash
+python playlist.py run --genre Comedy --recommendations 10
+```
+
+## Config: Structured Configuration
+
+Configs are special parameters for complex, structured configuration:
+
+```python
+from metaflow import FlowSpec, step, Config
+
+class ConfigFlow(FlowSpec):
+    config = Config('config', 
+                   default='config.json',
+                   help='Configuration file')
+    
+    @step
+    def start(self):
+        # Access config values with dot notation
+        print(f"Model: {self.config.model.name}")
+        print(f"Learning rate: {self.config.model.learning_rate}")
+        print(f"Batch size: {self.config.training.batch_size}")
+        
+        # Or dictionary notation
+        print(f"Model: {self.config['model']['name']}")
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Example `config.json`:
+
+```json
+{
+  "model": {
+    "name": "resnet50",
+    "learning_rate": 0.001,
+    "layers": [64, 128, 256]
+  },
+  "training": {
+    "batch_size": 32,
+    "epochs": 100
+  }
+}
+```
+
+Run with config:
+
+```bash
+# Use default config file
+python myflow.py run
+
+# Override config file
+python myflow.py run --config production.json
+
+# Provide inline config
+python myflow.py run --config-value '{"model": {"name": "vgg16"}}'
+```
+
+### Config Properties
+
+Configs are immutable ConfigValue objects:
+
+```python
+# From config_parameters.py:66
+class ConfigValue(collections.abc.Mapping, dict):
+    """Thin wrapper around nested dictionary configuration."""
+    
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Prevent configuration modification
+        if name == '_data':
+            return super().__setattr__(name, value)
+        raise TypeError('ConfigValue is immutable')
+```
+
+Attempting to modify raises an error:
+
+```python
+@step
+def start(self):
+    # This will raise TypeError
+    self.config.model.name = 'other_model'
+```
+
+### Config vs Parameter
+
+| Feature | Parameter | Config |
+|---------|-----------|--------|
+| When set | Runtime | Deploy time |
+| Mutability | Immutable | Immutable |
+| Structure | Single value | Nested dictionary |
+| Use in decorators | Limited | Yes |
+| CLI syntax | `--param value` | `--config file.json` |
+
+### Using Configs in Decorators
+
+Configs can be used in decorator arguments:
+
+```python
+from metaflow import FlowSpec, step, Config, resources
+
+class ConfigDecoratorFlow(FlowSpec):
+    config = Config('config')
+    
+    @resources(memory=config.resources.memory,
+              cpu=config.resources.cpu)
+    @step
+    def start(self):
+        print("Running with configured resources")
+        self.next(self.end)
+```
+
+With `config.json`:
+
+```json
+{
+  "resources": {
+    "memory": 4000,
+    "cpu": 2
+  }
+}
+```
+
+### Config Expressions
+
+For complex expressions, use `config_expr()`:
+
+```python
+from metaflow import FlowSpec, step, Config, config_expr, environment
+
+class ConfigExprFlow(FlowSpec):
+    config = Config('config')
+    
+    # Use expression for complex logic
+    @environment(vars={
+        'MODEL_NAME': config_expr('config.model.name.upper()'),
+        'FULL_PATH': config_expr('config.data.base_path + "/" + config.data.file')
+    })
+    @step
+    def start(self):
+        self.next(self.end)
+```
+
+From the source:
+
+```python
+# From config_parameters.py:395
+def config_expr(expr: str) -> DelayEvaluator:
+    """
+    Function to allow you to use an expression involving a config parameter
+    in places where it may not be directly accessible.
+    """
+    parent_globals = inspect.currentframe().f_back.f_globals
+    return DelayEvaluator(expr, saved_globals=parent_globals)
+```
+
+### Custom Parsers
+
+Configs default to JSON but support custom parsers:
+
+```python
+import yaml
+
+class YamlConfigFlow(FlowSpec):
+    config = Config('config',
+                   parser=yaml.safe_load,
+                   default='config.yaml')
+```
+
+Or reference a parser by name:
+
+```python
+config = Config('config',
+               parser='yaml.safe_load',  # Module.function format
+               default='config.yaml')
+```
+
+### Default Values
+
+Configs support both default files and default values:
+
+```python
+# Default file path
+config = Config('config', default='config.json')
+
+# Default value (if file not found)
+config = Config('config',
+               default='config.json',
+               default_value={'model': 'baseline'})
+
+# Only default value (no file)
+config = Config('config',
+               default_value={'model': 'baseline'})
+```
+
+## Parameter Validation
+
+### Reserved Names
+
+Some parameter names are reserved:
+
+```python
+# From parameters.py:396
+reserved_params = [
+    'params', 'with', 'tag', 'namespace', 'obj', 'tags',
+    'decospecs', 'run-id-file', 'max-num-splits',
+    'max-workers', 'max-log-size', 'user-namespace',
+    'run-id', 'task-id', 'runner-attribute-file',
+]
+```
+
+Using a reserved name raises an error:
+
+```python
+# This will fail
+tag = Parameter('tag', default='latest')
+# MetaflowException: Parameter name 'tag' is a reserved word
+```
+
+### Required Parameters
+
+```python
+api_key = Parameter('api-key',
+                   help='API key for service',
+                   required=True)
+```
+
+Running without required parameters shows an error:
+
+```bash
+python myflow.py run
+# Error: Missing option '--api-key'
+```
+
+### Parameter Name Normalization
+
+Parameters are case-insensitive:
+
+```python
+# From flowspec.py:350
+norm = param.name.lower()
+if norm in seen:
+    raise MetaflowException(
+        "Parameter *%s* is specified twice. "
+        "Note that parameter names are case-insensitive." % param.name
+    )
+```
+
+## Accessing Parameters in Code
+
+### As Artifacts
+
+Parameters become artifacts accessible throughout the flow:
+
+```python
+@step
+def start(self):
+    print(f"Parameter value: {self.my_param}")
+    self.next(self.end)
+
+@step  
+def end(self):
+    # Still accessible
+    print(f"Parameter value: {self.my_param}")
+```
+
+### Parameter Immutability
+
+Parameters cannot be modified:
+
+```python
+@step
+def start(self):
+    # This will raise AttributeError
+    self.my_param = 'new_value'
+```
+
+From the test suite:
+
+```python
+# From basic_parameters.py:42
+try:
+    # parameters should be immutable
+    self.int_param = 5
+    raise ExpectationFailed(AttributeError, "nothing")
+except AttributeError:
+    pass
+```
+
+## Environment Variables
+
+Parameters can be set via environment variables:
+
+```bash
+# Format: METAFLOW_RUN_<PARAM_NAME_UPPERCASE>
+export METAFLOW_RUN_BATCH_SIZE=200
+python myflow.py run
+```
+
+From the test:
+
+```python
+# From basic_parameters.py:27
+os.environ['METAFLOW_RUN_NO_DEFAULT_PARAM'] = 'test_str'
+os.environ['METAFLOW_RUN_BOOL_PARAM'] = 'False'
+```
+
+## Best Practices
+
+### 1. Meaningful Defaults
+
+Provide sensible defaults for optional parameters:
+
+```python
+# Good
+batch_size = Parameter('batch-size',
+                       help='Processing batch size',
+                       default=100)  # Reasonable default
+
+# Not ideal
+batch_size = Parameter('batch-size',
+                       help='Processing batch size',
+                       required=True)  # Forces user to always specify
+```
+
+### 2. Clear Help Text
+
+```python
+# Good
+threshold = Parameter('threshold',
+                      help='Classification threshold (0.0-1.0). '
+                           'Higher values increase precision.',
+                      default=0.5)
+
+# Not helpful  
+threshold = Parameter('threshold', default=0.5)
+```
+
+### 3. Use Configs for Complex Settings
+
+```python
+# Instead of many parameters:
+model_name = Parameter('model-name')
+learning_rate = Parameter('learning-rate', type=float)
+batch_size = Parameter('batch-size', type=int)
+epochs = Parameter('epochs', type=int)
+# ... many more
+
+# Use a config:
+config = Config('config', default='model_config.json')
+# Access: self.config.model.name, self.config.training.learning_rate, etc.
+```
+
+### 4. Validate Parameters Early
+
+```python
+@step
+def start(self):
+    # Validate parameters at the start
+    if self.batch_size <= 0:
+        raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+    
+    if self.threshold < 0 or self.threshold > 1:
+        raise ValueError(f"threshold must be between 0 and 1, got {self.threshold}")
+    
+    self.next(self.process)
+```
+
+### 5. Document Parameter Choices
+
+```python
+model_type = Parameter('model-type',
+                       help='Model type to use. Options: '
+                            'rf (Random Forest), '
+                            'xgb (XGBoost), '
+                            'nn (Neural Network)',
+                       default='rf')
+```
+
+## Common Patterns
+
+### Debug Mode
+
+```python
+class MyFlow(FlowSpec):
+    debug = Parameter('debug',
+                     help='Enable debug mode',
+                     type=bool,
+                     default=False)
+    
+    @step
+    def start(self):
+        if self.debug:
+            print("Debug mode enabled")
+            print(f"Data shape: {self.data.shape}")
+            print(f"Memory usage: {self.data.memory_usage()}")
+        self.next(self.end)
+```
+
+### Environment Selection
+
+```python
+class DeployableFlow(FlowSpec):
+    env = Parameter('env',
+                   help='Environment: dev, staging, or prod',
+                   default='dev')
+    
+    config = Config('config',
+                   default=lambda ctx: f'config.{ctx.user_name}.json')
+    
+    @step
+    def start(self):
+        if self.env == 'prod':
+            # Production settings
+            self.use_cache = False
+            self.batch_size = 1000
+        else:
+            # Development settings
+            self.use_cache = True
+            self.batch_size = 10
+        
+        self.next(self.end)
+```
+
+### Feature Flags
+
+```python
+class ExperimentalFlow(FlowSpec):
+    use_new_algorithm = Parameter('use-new-algorithm',
+                                 help='Enable experimental algorithm',
+                                 type=bool,
+                                 default=False)
+    
+    @step
+    def process(self):
+        if self.use_new_algorithm:
+            self.result = new_algorithm(self.data)
+        else:
+            self.result = stable_algorithm(self.data)
+        self.next(self.end)
+```
+
+### Data Source Selection
+
+```python
+class DataFlow(FlowSpec):
+    data_source = Parameter('data-source',
+                           help='Data source: s3, local, or api',
+                           default='local')
+    
+    data_path = Parameter('data-path',
+                         help='Path to data',
+                         default='data.csv')
+    
+    @step
+    def start(self):
+        if self.data_source == 's3':
+            self.data = load_from_s3(self.data_path)
+        elif self.data_source == 'api':
+            self.data = load_from_api(self.data_path)
+        else:
+            self.data = load_from_file(self.data_path)
+        
+        self.next(self.end)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="FlowSpec" icon="diagram-project" href="/building/flowspec">
+    Learn more about the FlowSpec base class
+  </Card>
+  <Card title="Data Management" icon="database" href="/building/data-management">
+    Best practices for managing data artifacts
+  </Card>
+  <Card title="Error Handling" icon="shield" href="/building/error-handling">
+    Handle errors and failures gracefully
+  </Card>
+  <Card title="Branching" icon="code-branch" href="/building/branching">
+    Create parallel execution paths
+  </Card>
+</CardGroup>

@@ -1,0 +1,198 @@
+---
+title: 'NBDeployer'
+description: 'Deploy Metaflow flows from Jupyter notebooks'
+---
+
+## Overview
+
+The `NBDeployer` class is a wrapper over `Deployer` for deploying flows defined in a Jupyter notebook cell. It automatically extracts the flow code from the notebook cell and creates a temporary Python file for deployment.
+
+## Usage
+
+Instantiate `NBDeployer` on the last line of a notebook cell where a flow is defined. Unlike `Deployer`, this class is not meant to be used as a context manager.
+
+```python
+from metaflow import FlowSpec, step, NBDeployer
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Starting")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Done")
+
+# Deploy the flow
+deployer = NBDeployer(MyFlow)
+argo = deployer.argo_workflows(name="my-notebook-flow")
+deployed_flow = argo.create()
+
+# Trigger a run
+result = deployed_flow.trigger(alpha=300)
+print(result.run)
+```
+
+## Constructor
+
+### `NBDeployer(flow, show_output=True, profile=None, env=None, base_dir=None, file_read_timeout=3600, **kwargs)`
+
+Create a new NBDeployer instance for deploying a flow defined in a notebook cell.
+
+**Parameters:**
+
+<ParamField path="flow" type="FlowSpec" required>
+  Flow class defined in the same notebook cell.
+</ParamField>
+
+<ParamField path="show_output" type="bool" default="True">
+  Show the stdout and stderr to the console by default.
+</ParamField>
+
+<ParamField path="profile" type="str" default="None">
+  Metaflow profile to use to deploy this flow. If not specified, the default profile is used (or the one already set using `METAFLOW_PROFILE`).
+</ParamField>
+
+<ParamField path="env" type="Dict[str, str]" default="None">
+  Additional environment variables to set. This overrides the environment set for this process.
+</ParamField>
+
+<ParamField path="base_dir" type="str" default="None">
+  The directory to run the subprocess in. If not specified, the current working directory is used.
+</ParamField>
+
+<ParamField path="file_read_timeout" type="int" default="3600">
+  The timeout in seconds until which we try to read the deployer attribute file.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` (i.e., options listed in `python myflow.py --help`).
+</ParamField>
+
+**Raises:**
+
+`NBDeployerInitializationError` - If NBDeployer is not used in an interactive Python environment (such as Jupyter).
+
+## Methods
+
+The `NBDeployer` class forwards all attribute access to the underlying `Deployer` instance. This means you can use all the orchestrator methods available on `Deployer`.
+
+### Orchestrator Methods
+
+**`argo_workflows(**deployer_kwargs)`**
+
+Create a deployer for Argo Workflows.
+
+**Returns:** An orchestrator-specific deployer object that can be used to create, delete, and manage deployments.
+
+**Example:**
+
+```python
+deployer = NBDeployer(MyFlow)
+argo = deployer.argo_workflows(name='my-notebook-workflow')
+deployed_flow = argo.create()
+
+# Trigger a run
+triggered_run = deployed_flow.trigger(alpha=5)
+print(triggered_run.run)
+```
+
+**`step_functions(**deployer_kwargs)`**
+
+Create a deployer for AWS Step Functions.
+
+**Returns:** An orchestrator-specific deployer object that can be used to create, delete, and manage deployments.
+
+**Example:**
+
+```python
+deployer = NBDeployer(MyFlow)
+sf = deployer.step_functions(name='my-notebook-state-machine')
+deployed_flow = sf.create()
+```
+
+### `cleanup()`
+
+Delete any temporary files created during deployment.
+
+**Example:**
+
+```python
+deployer = NBDeployer(MyFlow)
+argo = deployer.argo_workflows(name='my-workflow')
+deployed_flow = argo.create()
+deployer.cleanup()  # Clean up temporary files
+```
+
+## Workflow
+
+A typical workflow with `NBDeployer` follows these steps:
+
+1. **Define the flow** in a notebook cell
+2. **Create the deployer**: `deployer = NBDeployer(MyFlow)`
+3. **Select orchestrator**: `argo = deployer.argo_workflows(name='my-flow')`
+4. **Create deployment**: `deployed_flow = argo.create()`
+5. **Trigger runs**: `triggered_run = deployed_flow.trigger(param1=value1)`
+6. **Monitor execution**: `triggered_run.wait_for_run()` or `print(triggered_run.run)`
+7. **Clean up** (optional): `deployer.cleanup()`
+
+**Example:**
+
+```python
+from metaflow import FlowSpec, step, NBDeployer, Parameter
+
+class MyParameterizedFlow(FlowSpec):
+    alpha = Parameter('alpha', default=5)
+    
+    @step
+    def start(self):
+        print(f"Alpha is {self.alpha}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Done")
+
+# Deploy to Argo Workflows
+deployer = NBDeployer(MyParameterizedFlow)
+argo = deployer.argo_workflows(name='param-flow')
+deployed_flow = argo.create()
+
+# Trigger multiple runs with different parameters
+run1 = deployed_flow.trigger(alpha=10)
+run2 = deployed_flow.trigger(alpha=20)
+
+# Wait for runs to start
+run1.wait_for_run(timeout=300)
+run2.wait_for_run(timeout=300)
+
+print(f"Run 1: {run1.run.finished}")
+print(f"Run 2: {run2.run.finished}")
+
+# Clean up temporary files
+deployer.cleanup()
+```
+
+## Differences from Deployer
+
+- **No context manager**: `NBDeployer` is not meant to be used as a context manager
+- **Notebook-specific**: Automatically extracts flow code from the notebook cell
+- **Attribute forwarding**: All method calls are forwarded to the underlying `Deployer` instance
+- **Environment handling**: Automatically clears the `JPY_PARENT_PID` environment variable to prevent interference
+
+## Notes
+
+- `NBDeployer` requires an interactive Python environment (such as Jupyter)
+- The flow must be defined in the same notebook cell as the `NBDeployer` instantiation
+- Temporary flow files are created in `base_dir` (or the current working directory)
+- Remember to call `cleanup()` when you're done to remove temporary files
+- The deployed flow persists on the orchestrator even after calling `cleanup()` - this only removes local temporary files
+
+## Related Classes
+
+For more information on the classes returned by `NBDeployer`, see:
+
+- [Deployer](/api/runner/deployer) - The underlying deployer class
+- `DeployedFlow` - Represents a deployed flow (documented in [Deployer](/api/runner/deployer))
+- `TriggeredRun` - Represents a triggered run (documented in [Deployer](/api/runner/deployer))

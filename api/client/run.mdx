@@ -1,0 +1,422 @@
+---
+title: Run
+---
+
+A `Run` represents an execution of a `Flow`. It is a container of `Step` objects.
+
+## Constructor
+
+```python
+Run(pathspec: Optional[str] = None, 
+    attempt: Optional[int] = None)
+```
+
+### Parameters
+
+<ParamField path="pathspec" type="str" optional>
+  Path to the run (e.g., 'FlowName/RunID').
+</ParamField>
+
+<ParamField path="attempt" type="int" optional>
+  Specific attempt number (only applicable to Task or DataArtifact).
+</ParamField>
+
+## Properties
+
+### id
+
+```python
+id: str
+```
+
+The run ID (run number).
+
+### data
+
+```python
+data: Optional[MetaflowData]
+```
+
+A shortcut to `run['end'].task.data`, i.e., data produced by this run.
+
+You can access data produced by this run as follows:
+```python
+print(run.data.my_var)
+```
+
+This is a shorthand for `run['end'].task.data`. If the 'end' step has not yet executed, returns None.
+
+**Returns:** Container of all artifacts produced by this run.
+
+### successful
+
+```python
+successful: bool
+```
+
+Indicates whether or not the run completed successfully.
+
+A run is successful if its 'end' step is successful.
+
+**Returns:** True if the run completed successfully and False otherwise.
+
+### finished
+
+```python
+finished: bool
+```
+
+Indicates whether or not the run completed.
+
+A run completed if its 'end' step completed.
+
+**Returns:** True if the run completed and False otherwise.
+
+### finished_at
+
+```python
+finished_at: Optional[datetime]
+```
+
+Returns the datetime object of when the run finished (successfully or not).
+
+The completion time of a run is the same as the completion time of its 'end' step. If the 'end' step has not completed, returns None.
+
+**Returns:** Datetime of when the run finished.
+
+### code
+
+```python
+code: Optional[MetaflowCode]
+```
+
+Returns the `MetaflowCode` object for this run, if present.
+
+Code is packed if at least one `Step` runs remotely, else None is returned.
+
+**Returns:** Code package for this run.
+
+### trigger
+
+```python
+trigger: Optional[Trigger]
+```
+
+Returns a container of events that triggered this run.
+
+This returns None if the run was not triggered by any events.
+
+**Returns:** Container of triggering events.
+
+### end_task
+
+```python
+end_task: Optional[Task]
+```
+
+Returns the `Task` corresponding to the 'end' step.
+
+This returns None if the end step does not yet exist.
+
+**Returns:** The 'end' task.
+
+### tags
+
+```python
+tags: FrozenSet[str]
+```
+
+Tags associated with the run (user and system tags).
+
+### user_tags
+
+```python
+user_tags: FrozenSet[str]
+```
+
+User tags associated with the run.
+
+### system_tags
+
+```python
+system_tags: FrozenSet[str]
+```
+
+System tags associated with the run.
+
+### created_at
+
+```python
+created_at: datetime
+```
+
+Date and time this object was first created.
+
+### parent
+
+```python
+parent: Optional[MetaflowObject]
+```
+
+Returns the parent object (Flow) of this run.
+
+### pathspec
+
+```python
+pathspec: str
+```
+
+Pathspec of this object (e.g., 'FlowName/RunID').
+
+### path_components
+
+```python
+path_components: List[str]
+```
+
+Components of the pathspec.
+
+### origin_pathspec
+
+```python
+origin_pathspec: Optional[str]
+```
+
+Pathspec of the original object this object was cloned from (in the case of a resume).
+
+Returns None if not applicable.
+
+## Methods
+
+### steps()
+
+```python
+steps(*tags: str) -> Iterator[Step]
+```
+
+**[Legacy function - do not use]**
+
+Returns an iterator over all `Step` objects in the run. This is an alias to iterating the object itself.
+
+**Parameters:**
+- `tags` (str): No op (legacy functionality)
+
+**Yields:** `Step` objects in this run.
+
+### add_tag()
+
+```python
+add_tag(tag: str)
+```
+
+Add a tag to this `Run`.
+
+Note that if the tag is already a system tag, it is not added as a user tag, and no error is thrown.
+
+**Parameters:**
+- `tag` (str): Tag to add
+
+### add_tags()
+
+```python
+add_tags(tags: Iterable[str])
+```
+
+Add one or more tags to this `Run`.
+
+Note that if any tag is already a system tag, it is not added as a user tag and no error is thrown.
+
+**Parameters:**
+- `tags` (Iterable[str]): Tags to add
+
+### remove_tag()
+
+```python
+remove_tag(tag: str)
+```
+
+Remove one tag from this `Run`.
+
+Removing a system tag is an error. Removing a non-existent user tag is a no-op.
+
+**Parameters:**
+- `tag` (str): Tag to remove
+
+### remove_tags()
+
+```python
+remove_tags(tags: Iterable[str])
+```
+
+Remove one or more tags from this `Run`.
+
+Removing a system tag will result in an error. Removing a non-existent user tag is a no-op.
+
+**Parameters:**
+- `tags` (Iterable[str]): Tags to remove
+
+### replace_tag()
+
+```python
+replace_tag(tag_to_remove: str, tag_to_add: str)
+```
+
+Remove a tag and add a tag atomically. Removal is done first.
+
+The rules for `add_tag` and `remove_tag` also apply here.
+
+**Parameters:**
+- `tag_to_remove` (str): Tag to remove
+- `tag_to_add` (str): Tag to add
+
+### replace_tags()
+
+```python
+replace_tags(tags_to_remove: Iterable[str], tags_to_add: Iterable[str])
+```
+
+Remove and add tags atomically; the removal is done first.
+
+The rules for `add_tag` and `remove_tag` also apply here.
+
+**Parameters:**
+- `tags_to_remove` (Iterable[str]): Tags to remove
+- `tags_to_add` (Iterable[str]): Tags to add
+
+### \_\_iter\_\_()
+
+```python
+__iter__() -> Iterator[Step]
+```
+
+Iterate over all children `Step` of this `Run`.
+
+**Yields:** `Step` objects in this Run.
+
+### \_\_getitem\_\_()
+
+```python
+__getitem__(name: str) -> Step
+```
+
+Returns the `Step` object with the step name 'name'.
+
+**Parameters:**
+- `name` (str): Step name
+
+**Returns:** `Step` for this step name in this Run.
+
+**Raises:** `KeyError` if the name does not identify a valid Step object.
+
+### \_\_contains\_\_()
+
+```python
+__contains__(id: str) -> bool
+```
+
+Tests whether a child named 'id' exists.
+
+**Parameters:**
+- `id` (str): Name of the child object
+
+**Returns:** True if the child exists or False otherwise.
+
+### is_in_namespace()
+
+```python
+is_in_namespace() -> bool
+```
+
+Returns whether this object is in the current namespace.
+
+**Returns:** Whether or not the object is in the current namespace.
+
+## Usage Examples
+
+### Access run data
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+
+if run.successful:
+    print(f"Run finished at: {run.finished_at}")
+    print(f"Result: {run.data.result}")
+else:
+    print(f"Run failed or is still running")
+```
+
+### Iterate over steps
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+
+for step in run:
+    print(f"Step: {step.id}")
+    print(f"  Finished: {step.finished_at}")
+```
+
+### Access specific step
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+start_step = run['start']
+print(f"Start step finished at: {start_step.finished_at}")
+```
+
+### Tag management
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+
+# Add tags
+run.add_tag('production')
+run.add_tags(['v2', 'verified'])
+
+# Remove tags
+run.remove_tag('staging')
+
+# Replace tags atomically
+run.replace_tag('old_version', 'new_version')
+
+print(f"Current tags: {run.user_tags}")
+```
+
+### Access code package
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+
+if run.code:
+    print(f"Code path: {run.code.path}")
+    print(f"Script name: {run.code.script_name}")
+    print(f"FlowSpec source:\n{run.code.flowspec}")
+```
+
+### Check trigger information
+
+```python
+from metaflow import Run
+
+run = Run('MyFlow/123')
+
+if run.trigger:
+    print(f"Run was triggered by events: {run.trigger}")
+else:
+    print("Run was not triggered by events")
+```
+
+## Related
+
+- [Flow](/api/client/flow) - Parent Flow object
+- [Step](/api/client/step) - Child Step objects
+- [Task](/api/client/task) - Access task data

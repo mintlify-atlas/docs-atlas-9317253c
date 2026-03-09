@@ -1,0 +1,209 @@
+---
+title: "@retry"
+---
+
+The `@retry` decorator specifies the number of times a task should be retried if it fails.
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, retry
+
+class MyFlow(FlowSpec):
+    @retry(times=3)
+    @step
+    def flaky_step(self):
+        # This step will retry up to 3 times on failure
+        import random
+        if random.random() < 0.5:
+            raise Exception("Random failure")
+        print("Success!")
+        self.next(self.end)
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+## Description
+
+The `@retry` decorator is useful for handling transient errors such as network issues, temporary resource unavailability, or other intermittent failures. When a step fails, Metaflow will automatically retry it according to the specified configuration.
+
+**Important**: If your task contains operations that can't be retried safely (e.g., database updates, API calls that aren't idempotent), use `@retry(times=0)` to disable retries.
+
+## Parameters
+
+<ParamField path="times" type="int" default="3">
+  Number of times to retry this task on failure. The total number of attempts will be `times + 1` (the original attempt plus retries).
+</ParamField>
+
+<ParamField path="minutes_between_retries" type="int" default="2">
+  Number of minutes to wait between retry attempts.
+</ParamField>
+
+## Examples
+
+### Basic Retry
+
+```python
+@retry(times=3)
+@step
+def download_data(self):
+    import requests
+    # Retries on network failures
+    response = requests.get('https://api.example.com/data')
+    self.data = response.json()
+    self.next(self.process)
+```
+
+### Custom Retry Delay
+
+```python
+@retry(times=5, minutes_between_retries=10)
+@step
+def external_api_call(self):
+    # Waits 10 minutes between retries
+    # Useful for rate-limited APIs
+    pass
+```
+
+### Disable Retries
+
+```python
+@retry(times=0)
+@step
+def database_update(self):
+    # No retries - operation is not idempotent
+    # Write to database once only
+    pass
+```
+
+### Combining with Other Decorators
+
+```python
+@retry(times=3, minutes_between_retries=5)
+@timeout(hours=1)
+@batch(cpu=4, memory=16384)
+@step
+def robust_processing(self):
+    # Retries on failure
+    # Times out after 1 hour
+    # Runs on AWS Batch
+    pass
+```
+
+## Combining with @catch
+
+The `@retry` decorator works well with `@catch`. After all retries are exhausted, `@catch` will execute fallback code:
+
+```python
+@catch(var='error')
+@retry(times=3)
+@step
+def resilient_step(self):
+    # Try up to 3 times
+    result = risky_operation()
+    self.result = result
+    self.next(self.end)
+
+@step
+def end(self):
+    if hasattr(self, 'error') and self.error:
+        print(f"Step failed after retries: {self.error}")
+    else:
+        print(f"Success: {self.result}")
+```
+
+## Retry Behavior
+
+When a step fails:
+
+1. Metaflow waits for `minutes_between_retries` minutes
+2. The entire step is re-executed from the beginning
+3. All previous artifacts from the failed attempt are discarded
+4. This continues until either:
+   - The step succeeds, OR
+   - All retry attempts are exhausted
+
+## Detecting Retries
+
+You can check if a step is being retried using the `current` object:
+
+```python
+from metaflow import current
+
+@retry(times=3)
+@step
+def my_step(self):
+    if current.retry_count > 0:
+        print(f"This is retry attempt {current.retry_count}")
+    # Your code here
+    pass
+```
+
+## Best Practices
+
+1. **Use for transient failures**: Retries work well for network issues, cloud API throttling, and temporary resource unavailability
+2. **Idempotency**: Ensure your step can be safely re-executed multiple times
+3. **Set appropriate delays**: Use `minutes_between_retries` to avoid overwhelming external services
+4. **Combine with timeout**: Always use `@timeout` with `@retry` to prevent infinite hangs
+5. **Disable when needed**: Use `@retry(times=0)` for non-idempotent operations
+
+## Common Patterns
+
+### Network Operations
+
+```python
+@retry(times=5, minutes_between_retries=2)
+@step
+def fetch_data(self):
+    import requests
+    # Handles temporary network issues
+    response = requests.get(url, timeout=30)
+    self.data = response.json()
+    self.next(self.process)
+```
+
+### Cloud API Calls
+
+```python
+@retry(times=3, minutes_between_retries=5)
+@step
+def cloud_operation(self):
+    import boto3
+    # Handles AWS throttling and transient errors
+    s3 = boto3.client('s3')
+    s3.upload_file('data.csv', 'my-bucket', 'data.csv')
+    self.next(self.end)
+```
+
+### Exponential Backoff Pattern
+
+```python
+from metaflow import current
+import time
+
+@retry(times=5)
+@step
+def exponential_backoff(self):
+    if current.retry_count > 0:
+        # Wait exponentially longer on each retry
+        wait_time = 2 ** current.retry_count
+        time.sleep(wait_time)
+    
+    # Your operation here
+    pass
+```
+
+## Limitations
+
+- Maximum retry count is limited by `MAX_ATTEMPTS` in Metaflow configuration
+- The total number of attempts (original + retries + `@catch` fallback) must not exceed `MAX_ATTEMPTS`
+- Retries consume additional compute resources and time
+
+## See Also
+
+- [@catch decorator](/api/decorators/catch)
+- [@timeout decorator](/api/decorators/timeout)
+- [@batch decorator](/api/decorators/batch)
+- [@kubernetes decorator](/api/decorators/kubernetes)
+- [Error Handling Guide](/docs/guides/error-handling)

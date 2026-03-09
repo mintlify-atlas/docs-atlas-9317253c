@@ -1,0 +1,340 @@
+---
+title: "@card"
+---
+
+The `@card` decorator creates a human-readable visual report (called a Metaflow Card) after a step completes. Cards can display text, images, tables, and interactive visualizations.
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, card
+from metaflow.cards import Markdown, Table
+
+class MyFlow(FlowSpec):
+    @card
+    @step
+    def analyze(self):
+        from metaflow import current
+        
+        # Add content to the card
+        current.card.append(Markdown("# Analysis Results"))
+        current.card.append(Table([["Metric", "Value"],
+                                    ["Accuracy", "0.95"],
+                                    ["F1 Score", "0.92"]]))
+        self.next(self.end)
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+## Description
+
+Metaflow Cards provide a way to create rich, visual reports that are automatically saved and viewable through the Metaflow UI or command line. Cards are ideal for:
+
+- Visualizing model training results
+- Displaying data quality reports
+- Showing experiment comparisons
+- Creating dashboards for stakeholders
+
+You can add multiple `@card` decorators to a single step with different IDs.
+
+## Parameters
+
+<ParamField path="type" type="str" default="default">
+  Card type to use. Built-in types include `'default'`, `'blank'`, and custom card types you define.
+</ParamField>
+
+<ParamField path="id" type="str" default="None">
+  If multiple cards are present on a step, use this ID to distinguish between them. Access via `current.card[id]`.
+</ParamField>
+
+<ParamField path="options" type="Dict[str, Any]" default="{}">
+  Options passed to the card. The available options depend on the card type.
+</ParamField>
+
+<ParamField path="timeout" type="int" default="45">
+  Interrupt card rendering if it takes more than this many seconds.
+</ParamField>
+
+## Examples
+
+### Simple Card
+
+```python
+from metaflow import current
+from metaflow.cards import Markdown, Image
+
+@card
+@step
+def train(self):
+    # Train model
+    model = train_model()
+    
+    # Add results to card
+    current.card.append(Markdown("# Training Complete"))
+    current.card.append(Markdown(f"**Accuracy**: {model.accuracy}"))
+    
+    self.next(self.end)
+```
+
+### Multiple Cards
+
+```python
+@card(type='default', id='summary')
+@card(type='default', id='details')
+@step
+def analyze(self):
+    # Add to summary card
+    current.card['summary'].append(Markdown("# Summary"))
+    current.card['summary'].append(Markdown("Quick overview here"))
+    
+    # Add to details card
+    current.card['details'].append(Markdown("# Detailed Results"))
+    current.card['details'].append(Table(detailed_data))
+    
+    self.next(self.end)
+```
+
+### Visualizations
+
+```python
+import matplotlib.pyplot as plt
+from metaflow.cards import Markdown, Image
+import io
+import base64
+
+@card
+@step
+def visualize(self):
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(self.data)
+    plt.title('Results Over Time')
+    
+    # Save to bytes
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    
+    # Add to card
+    current.card.append(Markdown("# Visualization"))
+    current.card.append(Image.from_matplotlib(plt.gcf()))
+    
+    self.next(self.end)
+```
+
+### Tables
+
+```python
+from metaflow.cards import Table, Markdown
+
+@card
+@step
+def report(self):
+    # Create table data
+    headers = ['Model', 'Accuracy', 'F1 Score', 'Training Time']
+    rows = [
+        ['LogisticRegression', '0.85', '0.83', '2.3s'],
+        ['RandomForest', '0.92', '0.90', '45.2s'],
+        ['GradientBoosting', '0.94', '0.93', '120.5s'],
+    ]
+    
+    current.card.append(Markdown("# Model Comparison"))
+    current.card.append(Table([headers] + rows))
+    
+    self.next(self.end)
+```
+
+### HTML Content
+
+```python
+from metaflow.cards import Html
+
+@card
+@step
+def custom_html(self):
+    html_content = """
+    <div style="padding: 20px; background-color: #f0f0f0;">
+        <h2>Custom HTML Card</h2>
+        <p>You can include any HTML content here.</p>
+        <ul>
+            <li>Item 1</li>
+            <li>Item 2</li>
+        </ul>
+    </div>
+    """
+    current.card.append(Html(html_content))
+    self.next(self.end)
+```
+
+### Error Handling
+
+```python
+@card(type='default', id='results')
+@catch(var='error')
+@step
+def process(self):
+    try:
+        result = risky_operation()
+        current.card.append(Markdown(f"**Success**: {result}"))
+    except Exception as e:
+        current.card.append(Markdown(f"**Error**: {str(e)}"))
+        raise
+    
+    self.next(self.end)
+```
+
+## Card Components
+
+Metaflow provides several built-in components:
+
+### Markdown
+
+```python
+from metaflow.cards import Markdown
+current.card.append(Markdown("# Title\n\nParagraph with **bold** and *italic*"))
+```
+
+### Table
+
+```python
+from metaflow.cards import Table
+data = [['Header1', 'Header2'], ['Row1Col1', 'Row1Col2']]
+current.card.append(Table(data))
+```
+
+### Image
+
+```python
+from metaflow.cards import Image
+
+# From matplotlib
+current.card.append(Image.from_matplotlib(fig))
+
+# From file
+current.card.append(Image.from_file('plot.png'))
+
+# From bytes
+current.card.append(Image(image_bytes))
+```
+
+### Html
+
+```python
+from metaflow.cards import Html
+current.card.append(Html("<div>Custom HTML</div>"))
+```
+
+## Viewing Cards
+
+View cards using the Metaflow CLI:
+
+```bash
+# View card for a specific run/step/task
+python myflow.py card view <run_id>/<step_name>/<task_id>
+
+# View card in browser
+python myflow.py card view <run_id>/<step_name>/<task_id> --browser
+
+# List all cards for a run
+python myflow.py card list <run_id>
+```
+
+Or programmatically:
+
+```python
+from metaflow import Flow, Card
+
+run = Flow('MyFlow').latest_run
+for task in run['analyze']:
+    card = Card(task)
+    print(card.data)
+```
+
+## Custom Card Types
+
+You can create custom card types by subclassing `MetaflowCard`:
+
+```python
+from metaflow.cards import MetaflowCard
+
+class MyCustomCard(MetaflowCard):
+    type = 'custom'
+    
+    def render(self, task):
+        # Custom rendering logic
+        return "<html>...</html>"
+
+# Use in flow
+@card(type='custom')
+@step
+def my_step(self):
+    pass
+```
+
+## Best Practices
+
+1. **Keep it focused**: Create separate cards for different audiences or purposes
+2. **Add context**: Include titles, descriptions, and metadata
+3. **Use appropriate visualizations**: Choose the right chart type for your data
+4. **Handle errors gracefully**: Cards should render even if step partially fails
+5. **Consider performance**: Large images or complex visualizations may slow rendering
+6. **Use IDs for multiple cards**: Makes it easier to access specific cards
+
+## Common Patterns
+
+### Model Training Report
+
+```python
+@card
+@step
+def train(self):
+    # Train model
+    history = model.fit(X_train, y_train)
+    
+    # Create comprehensive report
+    current.card.append(Markdown("# Model Training Report"))
+    current.card.append(Markdown(f"**Model**: {model.__class__.__name__}"))
+    current.card.append(Markdown(f"**Final Accuracy**: {history['accuracy'][-1]:.4f}"))
+    
+    # Training curves
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(history['accuracy'])
+    plt.title('Accuracy')
+    plt.subplot(1, 2, 2)
+    plt.plot(history['loss'])
+    plt.title('Loss')
+    current.card.append(Image.from_matplotlib(plt.gcf()))
+    
+    self.next(self.end)
+```
+
+### A/B Test Results
+
+```python
+@card
+@step
+def ab_test_report(self):
+    current.card.append(Markdown("# A/B Test Results"))
+    
+    results = [
+        ['Variant', 'Users', 'Conversions', 'Rate'],
+        ['Control', '10000', '1250', '12.5%'],
+        ['Treatment', '10000', '1430', '14.3%'],
+    ]
+    current.card.append(Table(results))
+    
+    current.card.append(Markdown(
+        f"**Winner**: Treatment (+{1.8:.1f}pp)\n\n"
+        f"**Statistical Significance**: p < 0.001"
+    ))
+    
+    self.next(self.end)
+```
+
+## See Also
+
+- [Metaflow Cards Documentation](/docs/guides/cards)
+- [Card Components Reference](/api/cards)
+- [@step decorator](/api/decorators/step)

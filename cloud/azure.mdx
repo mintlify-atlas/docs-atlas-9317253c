@@ -1,0 +1,574 @@
+---
+title: "Azure Integration"
+description: "Run Metaflow workflows on Microsoft Azure with Blob Storage and Key Vault"
+---
+
+Metaflow integrates with Microsoft Azure to provide cloud storage via Azure Blob Storage and secure credential management through Azure Key Vault.
+
+## Overview
+
+Azure support in Metaflow includes:
+
+- **Azure Blob Storage**: Scalable object storage for artifacts and data
+- **Azure Key Vault**: Secure secrets and credential management
+- **Azure Container Registry (ACR)**: Container image storage
+- **Kubernetes**: Compute execution on Azure Kubernetes Service (AKS)
+
+<Note>
+  Azure compute is provided via Kubernetes. See the [Kubernetes documentation](/scaling/kubernetes) for compute configuration.
+</Note>
+
+## Setup
+
+### Prerequisites
+
+- Azure account with active subscription
+- Azure CLI installed and configured
+- Metaflow installed: `pip install metaflow`
+- Azure SDK packages: `pip install azure-storage-blob azure-identity azure-keyvault-secrets`
+
+### Authentication
+
+Metaflow uses Azure DefaultAzureCredential, which supports multiple authentication methods:
+
+```bash
+# Option 1: Azure CLI (recommended for development)
+az login
+
+# Option 2: Service Principal
+export AZURE_CLIENT_ID=<client-id>
+export AZURE_CLIENT_SECRET=<client-secret>
+export AZURE_TENANT_ID=<tenant-id>
+
+# Option 3: Managed Identity (for Azure VMs)
+# Automatically configured when running on Azure resources
+```
+
+## Azure Blob Storage
+
+Configure Metaflow to use Azure Blob Storage as the datastore.
+
+### Configuration
+
+```bash
+# Set Azure as default datastore
+export METAFLOW_DEFAULT_DATASTORE=azure
+
+# Specify container and path (without https:// prefix)
+export METAFLOW_DATASTORE_SYSROOT_AZURE=mycontainer/metaflow
+
+# Optional: Custom storage account endpoint
+export METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT=https://myaccount.blob.core.windows.net
+
+# Optional: Workload type (default, highCpu, or highMemory)
+export METAFLOW_AZURE_STORAGE_WORKLOAD_TYPE=default
+```
+
+### Storage Account Setup
+
+<Steps>
+  <Step title="Create Storage Account">
+    ```bash
+    az storage account create \
+      --name metaflowstorage \
+      --resource-group my-resource-group \
+      --location eastus \
+      --sku Standard_LRS
+    ```
+  </Step>
+  
+  <Step title="Create Container">
+    ```bash
+    az storage container create \
+      --name metaflow \
+      --account-name metaflowstorage
+    ```
+  </Step>
+  
+  <Step title="Configure Access">
+    Assign Storage Blob Data Contributor role:
+    ```bash
+    az role assignment create \
+      --role "Storage Blob Data Contributor" \
+      --assignee <user-or-service-principal-id> \
+      --scope /subscriptions/<subscription-id>/resourceGroups/my-resource-group/providers/Microsoft.Storage/storageAccounts/metaflowstorage
+    ```
+  </Step>
+</Steps>
+
+### Blob Storage Path Format
+
+Metaflow uses a specific path format for Azure Blob Storage:
+
+```
+<container-name>/<blob-prefix>
+```
+
+**Examples**:
+- `mycontainer/metaflow` - Container "mycontainer" with prefix "metaflow"
+- `production/workflows` - Container "production" with prefix "workflows"
+
+<Warning>
+  Do not include:
+  - Leading or trailing slashes
+  - `https://` prefix
+  - Storage account name
+  - Consecutive slashes
+</Warning>
+
+### Using Blob Storage in Code
+
+Metaflow automatically handles artifact storage:
+
+```python
+from metaflow import FlowSpec, step
+
+class AzureFlow(FlowSpec):
+    @step
+    def start(self):
+        # Artifacts automatically stored in Azure Blob Storage
+        self.data = [1, 2, 3, 4, 5]
+        self.model = train_model(self.data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Artifacts automatically retrieved from Blob Storage
+        print(f"Model accuracy: {self.model.score}")
+```
+
+### Direct Blob Access
+
+For direct blob operations, use the Azure SDK:
+
+```python
+from metaflow import FlowSpec, step
+from azure.storage.blob import BlobServiceClient
+from metaflow.plugins.azure import create_azure_credential
+
+class BlobAccessFlow(FlowSpec):
+    @step
+    def start(self):
+        # Create blob service client
+        credential = create_azure_credential()
+        service_client = BlobServiceClient(
+            account_url="https://myaccount.blob.core.windows.net",
+            credential=credential
+        )
+        
+        # Upload data
+        blob_client = service_client.get_blob_client(
+            container="mycontainer",
+            blob="data/input.csv"
+        )
+        with open("local_file.csv", "rb") as data:
+            blob_client.upload_blob(data, overwrite=True)
+        
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        # Download data
+        credential = create_azure_credential()
+        service_client = BlobServiceClient(
+            account_url="https://myaccount.blob.core.windows.net",
+            credential=credential
+        )
+        
+        blob_client = service_client.get_blob_client(
+            container="mycontainer",
+            blob="data/input.csv"
+        )
+        
+        with open("downloaded.csv", "wb") as f:
+            f.write(blob_client.download_blob().readall())
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Processing complete")
+```
+
+## Azure Key Vault
+
+Securely manage secrets and credentials using Azure Key Vault.
+
+### Configuration
+
+```bash
+# Set Key Vault prefix (vault URL)
+export METAFLOW_AZURE_KEY_VAULT_PREFIX=https://my-keyvault.vault.azure.net
+```
+
+### Key Vault Setup
+
+<Steps>
+  <Step title="Create Key Vault">
+    ```bash
+    az keyvault create \
+      --name my-keyvault \
+      --resource-group my-resource-group \
+      --location eastus
+    ```
+  </Step>
+  
+  <Step title="Set Access Policy">
+    ```bash
+    az keyvault set-policy \
+      --name my-keyvault \
+      --upn <user@domain.com> \
+      --secret-permissions get list
+    ```
+  </Step>
+  
+  <Step title="Add Secrets">
+    ```bash
+    # Add a simple secret
+    az keyvault secret set \
+      --vault-name my-keyvault \
+      --name api-key \
+      --value "your-secret-key"
+    ```
+  </Step>
+</Steps>
+
+### Using Secrets
+
+Metaflow's `@secrets` decorator integrates with Azure Key Vault:
+
+```python
+from metaflow import FlowSpec, step, secrets
+
+class SecureFlow(FlowSpec):
+    @secrets(
+        sources=["az-key-vault"],
+        secrets=["api-key", "database-password"]
+    )
+    @step
+    def start(self):
+        import os
+        # Secrets injected as environment variables
+        api_key = os.environ["API_KEY"]
+        db_password = os.environ["DATABASE_PASSWORD"]
+        
+        # Use secrets securely
+        self.data = fetch_data(api_key, db_password)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Fetched {len(self.data)} records")
+```
+
+### Secret Naming
+
+Azure Key Vault secret names must follow these rules:
+- 1-127 characters
+- Start with a letter
+- Contain only alphanumeric characters and hyphens
+- Example: `my-api-key`, `DatabasePassword`, `api-key-v2`
+
+### Secret ID Formats
+
+Metaflow supports multiple secret ID formats:
+
+#### 1. Simple Name (Requires Prefix)
+
+```python
+# Uses METAFLOW_AZURE_KEY_VAULT_PREFIX + secret name
+@secrets(sources=["az-key-vault"], secrets=["api-key"])
+@step
+def step_one(self):
+    import os
+    key = os.environ["API_KEY"]  # Hyphen converted to underscore
+```
+
+#### 2. Name with Version
+
+```python
+# Specific version of secret
+@secrets(sources=["az-key-vault"], secrets=["api-key/ec96f02080254f109c51a1f14cdb1931"])
+@step
+def step_two(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+#### 3. Full URL
+
+```python
+# Full Key Vault URL
+@secrets(
+    sources=["az-key-vault"],
+    secrets=["https://my-keyvault.vault.azure.net/secrets/api-key"]
+)
+@step
+def step_three(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+#### 4. Full URL with Version
+
+```python
+# Full URL with specific version
+@secrets(
+    sources=["az-key-vault"],
+    secrets=["https://my-keyvault.vault.azure.net/secrets/api-key/ec96f02080254f109c51a1f14cdb1931"]
+)
+@step
+def step_four(self):
+    import os
+    key = os.environ["API_KEY"]
+```
+
+### Custom Environment Variable Names
+
+```python
+@secrets(
+    sources=["az-key-vault"],
+    secrets=[
+        ("api-key", {"env_var_name": "CUSTOM_API_KEY"}),
+        ("db-password", {"env_var_name": "DB_PASS"})
+    ]
+)
+@step
+def custom_names(self):
+    import os
+    api_key = os.environ["CUSTOM_API_KEY"]
+    db_pass = os.environ["DB_PASS"]
+```
+
+## Azure Container Registry
+
+Use Azure Container Registry for custom Docker images.
+
+### Setup
+
+<Steps>
+  <Step title="Create ACR">
+    ```bash
+    az acr create \
+      --name myregistry \
+      --resource-group my-resource-group \
+      --sku Basic
+    ```
+  </Step>
+  
+  <Step title="Login to ACR">
+    ```bash
+    az acr login --name myregistry
+    ```
+  </Step>
+  
+  <Step title="Build and Push Image">
+    ```bash
+    # Build image
+    docker build -t myregistry.azurecr.io/my-image:v1.0 .
+    
+    # Push to ACR
+    docker push myregistry.azurecr.io/my-image:v1.0
+    ```
+  </Step>
+</Steps>
+
+### Using ACR Images
+
+```python
+from metaflow import FlowSpec, step, kubernetes
+
+class CustomImageFlow(FlowSpec):
+    @kubernetes(image="myregistry.azurecr.io/my-image:v1.0")
+    @step
+    def process(self):
+        # Runs with custom image from ACR
+        import custom_library
+        self.result = custom_library.process()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Result: {self.result}")
+```
+
+## Kubernetes Compute
+
+For compute execution on Azure, use Azure Kubernetes Service with Metaflow:
+
+```python
+from metaflow import FlowSpec, step, kubernetes
+
+class AzureComputeFlow(FlowSpec):
+    @kubernetes(cpu=4, memory=8000)
+    @step
+    def compute_step(self):
+        # Runs on AKS cluster
+        self.result = expensive_computation()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Result: {self.result}")
+```
+
+<Info>
+  See the [Kubernetes documentation](/scaling/kubernetes) for detailed AKS setup and configuration.
+</Info>
+
+## Azure RBAC Permissions
+
+Required Azure role assignments:
+
+### Storage Access
+
+```bash
+# Assign Storage Blob Data Contributor
+az role assignment create \
+  --role "Storage Blob Data Contributor" \
+  --assignee <principal-id> \
+  --scope <storage-account-resource-id>
+```
+
+Permissions needed:
+- `Microsoft.Storage/storageAccounts/blobServices/containers/read`
+- `Microsoft.Storage/storageAccounts/blobServices/containers/write`
+- `Microsoft.Storage/storageAccounts/blobServices/generateUserDelegationKey/action`
+
+### Key Vault Access
+
+```bash
+# Assign Key Vault Secrets User
+az role assignment create \
+  --role "Key Vault Secrets User" \
+  --assignee <principal-id> \
+  --scope <key-vault-resource-id>
+```
+
+Or use access policies:
+
+```bash
+az keyvault set-policy \
+  --name my-keyvault \
+  --object-id <principal-id> \
+  --secret-permissions get list
+```
+
+### Container Registry Access
+
+```bash
+# Assign AcrPull role for image pulling
+az role assignment create \
+  --role "AcrPull" \
+  --assignee <principal-id> \
+  --scope <acr-resource-id>
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Storage Optimization">
+    - Use appropriate storage tier (Hot, Cool, Archive)
+    - Implement lifecycle management policies
+    - Enable soft delete for recovery
+    - Use managed identities instead of connection strings
+    - Monitor storage costs with Azure Cost Management
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Always use Azure RBAC over access keys
+    - Enable storage account firewall rules
+    - Use private endpoints for storage access
+    - Rotate Key Vault secrets regularly
+    - Enable Azure Defender for storage
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Choose storage account in same region as compute
+    - Use appropriate workload type setting
+    - Enable blob versioning for important data
+    - Use blob index tags for efficient queries
+  </Accordion>
+  
+  <Accordion title="Monitoring">
+    - Enable diagnostic logging for storage
+    - Monitor Key Vault access logs
+    - Set up alerts for authentication failures
+    - Track storage metrics and capacity
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Accordion title="Authentication Errors">
+  **Problem**: `ClientAuthenticationError` when accessing storage or Key Vault
+  
+  **Solutions**:
+  - Verify Azure CLI login: `az account show`
+  - Check service principal credentials are set correctly
+  - Ensure managed identity is enabled on Azure resource
+  - Verify RBAC role assignments
+  - Check Azure AD token hasn't expired
+</Accordion>
+
+<Accordion title="Blob Storage Access Denied">
+  **Problem**: Cannot read or write blobs
+  
+  **Solutions**:
+  - Verify Storage Blob Data Contributor role is assigned
+  - Check storage account firewall rules
+  - Ensure container name is correct
+  - Verify path format (no leading/trailing slashes)
+  - Check if storage account requires private endpoint access
+</Accordion>
+
+<Accordion title="Key Vault Secret Not Found">
+  **Problem**: Secret retrieval fails
+  
+  **Solutions**:
+  - Verify secret name follows naming rules
+  - Check Key Vault access policy or RBAC permissions
+  - Ensure METAFLOW_AZURE_KEY_VAULT_PREFIX is set correctly
+  - Verify Key Vault firewall allows access
+  - Check secret hasn't been deleted (check soft-delete)
+</Accordion>
+
+<Accordion title="Invalid Path Format">
+  **Problem**: `ValueError` when parsing blob path
+  
+  **Solutions**:
+  - Remove `https://` prefix from path
+  - Remove leading and trailing slashes
+  - Use format: `container/prefix` not `container/prefix/`
+  - Check for consecutive slashes in path
+</Accordion>
+
+## Configuration Reference
+
+### Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|----------|
+| `METAFLOW_DEFAULT_DATASTORE` | Set to "azure" | `azure` |
+| `METAFLOW_DATASTORE_SYSROOT_AZURE` | Container and path | `mycontainer/metaflow` |
+| `METAFLOW_AZURE_STORAGE_BLOB_SERVICE_ENDPOINT` | Custom endpoint URL | `https://account.blob.core.windows.net` |
+| `METAFLOW_AZURE_STORAGE_WORKLOAD_TYPE` | Workload optimization | `default`, `highCpu`, `highMemory` |
+| `METAFLOW_AZURE_KEY_VAULT_PREFIX` | Key Vault URL | `https://my-kv.vault.azure.net` |
+| `METAFLOW_DEFAULT_AZURE_CLIENT_PROVIDER` | Auth provider | `azure-default` |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes on AKS" icon="dharmachakra" href="/scaling/kubernetes">
+    Set up compute on Azure Kubernetes Service
+  </Card>
+  <Card title="Argo Workflows" icon="workflow" href="/production/argo-workflows">
+    Deploy production workflows on Azure
+  </Card>
+  <Card title="Multi-Cloud Overview" icon="cloud" href="/cloud/overview">
+    Compare cloud platform features
+  </Card>
+  <Card title="Secrets Management" icon="key" href="/security/secrets">
+    Advanced secrets management patterns
+  </Card>
+</CardGroup>

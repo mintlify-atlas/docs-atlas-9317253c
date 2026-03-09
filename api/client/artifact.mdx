@@ -1,0 +1,287 @@
+---
+title: DataArtifact
+---
+
+A `DataArtifact` represents a single data artifact and associated metadata.
+
+Note that this object does not contain other objects as it is the leaf object in the hierarchy.
+
+## Constructor
+
+```python
+DataArtifact(pathspec: Optional[str] = None,
+             attempt: Optional[int] = None)
+```
+
+### Parameters
+
+<ParamField path="pathspec" type="str" optional>
+  Path to the artifact (e.g., 'FlowName/RunID/StepName/TaskID/ArtifactName').
+</ParamField>
+
+<ParamField path="attempt" type="int" optional>
+  Specific attempt number to access. If not specified, uses the latest attempt.
+</ParamField>
+
+## Properties
+
+### id
+
+```python
+id: str
+```
+
+The artifact name.
+
+### data
+
+```python
+data: Any
+```
+
+Unpickled representation of the data contained in this artifact.
+
+This is the actual object that was produced during execution of the run.
+
+**Returns:** Object contained in this artifact.
+
+### sha
+
+```python
+sha: str
+```
+
+Unique identifier for this artifact.
+
+This is a unique hash of the artifact (historically SHA1 hash).
+
+**Returns:** Hash of this artifact.
+
+### size
+
+```python
+size: int
+```
+
+Returns the size (in bytes) of the pickled object representing this DataArtifact.
+
+**Returns:** Size of the pickled representation of data artifact (in bytes).
+
+### finished_at
+
+```python
+finished_at: datetime
+```
+
+Creation time for this artifact.
+
+Corresponds roughly to the `Task.finished_at` time of the parent `Task`. This is an alias for `DataArtifact.created_at`.
+
+**Returns:** Creation time.
+
+### tags
+
+```python
+tags: FrozenSet[str]
+```
+
+Tags associated with the run this object belongs to (user and system tags).
+
+### user_tags
+
+```python
+user_tags: FrozenSet[str]
+```
+
+User tags associated with the run this object belongs to.
+
+### system_tags
+
+```python
+system_tags: FrozenSet[str]
+```
+
+System tags associated with the run this object belongs to.
+
+### created_at
+
+```python
+created_at: datetime
+```
+
+Date and time this object was first created.
+
+### parent
+
+```python
+parent: Optional[MetaflowObject]
+```
+
+Returns the parent object (Task) of this artifact.
+
+### pathspec
+
+```python
+pathspec: str
+```
+
+Pathspec of this object (e.g., 'FlowName/RunID/StepName/TaskID/ArtifactName').
+
+### path_components
+
+```python
+path_components: List[str]
+```
+
+Components of the pathspec.
+
+### origin_pathspec
+
+```python
+origin_pathspec: Optional[str]
+```
+
+Pathspec of the original object this object was cloned from (in the case of a resume).
+
+Returns None if not applicable.
+
+## Methods
+
+### is_in_namespace()
+
+```python
+is_in_namespace() -> bool
+```
+
+Returns whether this object is in the current namespace.
+
+If the current namespace is None, this will always return True.
+
+**Returns:** Whether or not the object is in the current namespace.
+
+## Usage Examples
+
+### Access artifact data
+
+```python
+from metaflow import DataArtifact
+
+artifact = DataArtifact('MyFlow/123/train/456/model')
+
+print(f"Artifact name: {artifact.id}")
+print(f"Artifact size: {artifact.size} bytes")
+print(f"Artifact SHA: {artifact.sha}")
+print(f"Created at: {artifact.created_at}")
+
+# Access the actual data
+model = artifact.data
+print(f"Model type: {type(model)}")
+```
+
+### Compare artifacts by hash
+
+```python
+from metaflow import Task
+
+task1 = Task('MyFlow/123/train/456')
+task2 = Task('MyFlow/124/train/789')
+
+model1 = task1['model']
+model2 = task2['model']
+
+if model1.sha == model2.sha:
+    print("Models are identical")
+else:
+    print("Models are different")
+```
+
+### Check artifact size before loading
+
+```python
+from metaflow import DataArtifact
+
+artifact = DataArtifact('MyFlow/123/process/456/large_dataset')
+
+# Check size before loading
+size_mb = artifact.size / (1024 * 1024)
+print(f"Artifact size: {size_mb:.2f} MB")
+
+if size_mb < 100:
+    # Only load if less than 100 MB
+    data = artifact.data
+    print(f"Loaded data: {len(data)} records")
+else:
+    print("Artifact too large, skipping")
+```
+
+### Access artifact from task
+
+```python
+from metaflow import Task
+
+task = Task('MyFlow/123/train/456')
+
+# Access artifact directly
+model_artifact = task['model']
+print(f"Model SHA: {model_artifact.sha}")
+print(f"Model size: {model_artifact.size} bytes")
+
+# Access the data
+model = model_artifact.data
+
+# Or use the shorthand via task.data
+model_direct = task.data.model
+assert model is model_direct  # Same object
+```
+
+### Iterate artifacts with metadata
+
+```python
+from metaflow import Task
+
+task = Task('MyFlow/123/analyze/456')
+
+print("Artifacts in task:")
+for artifact in task:
+    print(f"  {artifact.id}:")
+    print(f"    Size: {artifact.size} bytes")
+    print(f"    SHA: {artifact.sha}")
+    print(f"    Created: {artifact.created_at}")
+```
+
+### Access artifacts from specific attempt
+
+```python
+from metaflow import DataArtifact
+
+# Access artifact from first attempt
+artifact_v0 = DataArtifact('MyFlow/123/train/456/model', attempt=0)
+print(f"First attempt model SHA: {artifact_v0.sha}")
+
+# Access artifact from latest attempt
+artifact_latest = DataArtifact('MyFlow/123/train/456/model')
+print(f"Latest attempt model SHA: {artifact_latest.sha}")
+```
+
+### Check artifact creation time
+
+```python
+from metaflow import DataArtifact
+from datetime import datetime, timedelta
+
+artifact = DataArtifact('MyFlow/123/train/456/model')
+
+age = datetime.now() - artifact.created_at
+print(f"Artifact age: {age.days} days")
+
+if age < timedelta(days=7):
+    print("Artifact is recent (less than a week old)")
+else:
+    print("Artifact is old (more than a week old)")
+```
+
+## Related
+
+- [Task](/api/client/task) - Parent Task object
+- [Step](/api/client/step) - Access step-level information
+- [Run](/api/client/run) - Access run-level information

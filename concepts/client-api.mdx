@@ -1,0 +1,411 @@
+---
+title: Client API
+description: Client API for accessing runs, steps, tasks, and artifacts
+---
+
+The Metaflow Client API allows you to access and analyze runs, steps, tasks, and data artifacts from any Metaflow flow. Use it for analysis, debugging, or building tools on top of Metaflow.
+
+## Getting Started
+
+Import the main classes:
+
+```python
+from metaflow import Flow, Run, Step, Task, DataArtifact, Metaflow
+```
+
+## Metaflow Class
+
+The entry point for accessing all flows:
+
+```python
+from metaflow import Metaflow
+
+# List all flows
+for flow in Metaflow():
+    print(flow.id)
+```
+
+## Flow Objects
+
+Access a specific flow by name:
+
+```python
+from metaflow import Flow
+
+# Get a flow
+flow = Flow('MyFlow')
+
+# Get the latest run
+latest_run = flow.latest_run
+
+# Get a specific run
+run = flow['RunID']
+
+# Iterate over all runs
+for run in flow:
+    print(f"Run: {run.id}, Created: {run.created_at}")
+```
+
+### Flow Attributes
+
+```python
+flow = Flow('MyFlow')
+
+print(flow.id)              # Flow name
+print(flow.latest_run)      # Most recent run
+print(flow.latest_successful_run)  # Most recent successful run
+```
+
+## Run Objects
+
+A Run represents a single execution of a flow:
+
+```python
+from metaflow import Run
+
+# Get a run directly
+run = Run('MyFlow/123')
+
+# Or from a flow
+run = Flow('MyFlow').latest_run
+
+# Access run properties
+print(run.id)               # Run number
+print(run.pathspec)         # 'MyFlow/123'
+print(run.created_at)       # Datetime
+print(run.finished_at)      # Datetime (if completed)
+print(run.successful)       # Boolean
+print(run.finished)         # Boolean
+print(run.tags)             # Set of all tags
+print(run.user_tags)        # Set of user tags
+print(run.system_tags)      # Set of system tags
+```
+
+### Accessing Steps
+
+```python
+# Get a specific step
+step = run['start']
+
+# Iterate over all steps
+for step in run:
+    print(f"Step: {step.id}")
+
+# Get step by name
+if 'train' in run:
+    train_step = run['train']
+```
+
+### Run Data
+
+Access data artifacts from any step in the run:
+
+```python
+run = Flow('MyFlow').latest_run
+
+# Access data from a specific step
+data = run['end'].task.data
+print(data.accuracy)
+print(data.model)
+```
+
+## Step Objects
+
+A Step contains all tasks for that step:
+
+```python
+# Get a step
+step = Step('MyFlow/123/train')
+
+# Or from a run
+step = run['train']
+
+# Access step properties
+print(step.id)              # Step name
+print(step.pathspec)        # 'MyFlow/123/train'
+print(step.created_at)      # Datetime
+print(step.finished_at)     # Datetime (if completed)
+
+# Get the task (or first task if multiple)
+task = step.task
+
+# Iterate over all tasks (in foreach steps)
+for task in step:
+    print(f"Task: {task.id}, Index: {task.index}")
+```
+
+## Task Objects
+
+A Task represents a single execution of a step:
+
+```python
+# Get a task
+task = Task('MyFlow/123/train/456')
+
+# Or from a step
+task = step.task
+
+# Access task properties
+print(task.id)              # Task ID
+print(task.pathspec)        # 'MyFlow/123/train/456'
+print(task.index)           # Index in foreach (or None)
+print(task.created_at)      # Datetime
+print(task.finished_at)     # Datetime
+print(task.successful)      # Boolean
+print(task.finished)        # Boolean
+print(task.exception)       # Exception object (if failed)
+print(task.tags)            # Set of tags
+```
+
+### Task Data
+
+Access all artifacts from a task:
+
+```python
+task = run['train'].task
+
+# Access data container
+data = task.data
+
+# Access specific artifacts
+print(data.model)           # The model artifact
+print(data.accuracy)        # The accuracy artifact
+print(data.loss)            # The loss artifact
+
+# Check if artifact exists
+if 'model' in task.data:
+    model = data.model
+
+# Iterate over artifact names
+for artifact_name in dir(data):
+    if not artifact_name.startswith('_'):
+        print(artifact_name)
+```
+
+### Task Metadata
+
+```python
+# Get all metadata
+for m in task.metadata:
+    print(f"{m.name}: {m.value}")
+
+# Get metadata as dict (latest values)
+metadata = task.metadata_dict
+print(metadata['attempt'])
+print(metadata['runtime'])
+```
+
+## DataArtifact Objects
+
+Access individual artifacts:
+
+```python
+# Get a specific artifact
+artifact = DataArtifact('MyFlow/123/train/456/model')
+
+# Or from a task
+artifact = task['model']
+
+# Access artifact properties
+print(artifact.id)          # Artifact name ('model')
+print(artifact.data)        # The actual Python object
+print(artifact.sha)         # Unique content hash
+print(artifact.size)        # Size in bytes
+print(artifact.created_at)  # Datetime
+```
+
+## Common Patterns
+
+### Get Latest Successful Run
+
+```python
+flow = Flow('MyFlow')
+latest = flow.latest_successful_run
+
+if latest:
+    print(f"Latest run: {latest.id}")
+    print(f"Accuracy: {latest['end'].task.data.accuracy}")
+else:
+    print("No successful runs found")
+```
+
+### Compare Runs
+
+```python
+flow = Flow('MyFlow')
+
+# Get last 10 runs
+runs = list(flow)[:10]
+
+# Compare accuracies
+for run in runs:
+    if run.successful:
+        accuracy = run['end'].task.data.accuracy
+        print(f"Run {run.id}: {accuracy:.3f}")
+```
+
+### Analyze Foreach Results
+
+```python
+run = Flow('MyFlow').latest_run
+step = run['train']  # Foreach step
+
+# Collect results from all tasks
+results = []
+for task in step:
+    results.append({
+        'index': task.index,
+        'accuracy': task.data.accuracy,
+        'params': task.data.params
+    })
+
+# Find best result
+best = max(results, key=lambda x: x['accuracy'])
+print(f"Best params: {best['params']}")
+print(f"Best accuracy: {best['accuracy']}")
+```
+
+### Access Parent/Child Tasks
+
+```python
+task = Task('MyFlow/123/join/456')
+
+# Get parent tasks
+for parent in task.parent_tasks:
+    print(f"Parent: {parent.pathspec}")
+    print(f"Result: {parent.data.result}")
+
+# Get child tasks  
+for child in task.child_tasks:
+    print(f"Child: {child.pathspec}")
+```
+
+### Download Code Package
+
+```python
+run = Flow('MyFlow').latest_run
+
+# Access code used for this run
+if run.code:
+    print(f"Script: {run.code.script_name}")
+    print(f"Location: {run.code.path}")
+    
+    # Get source code
+    print(run.code.flowspec)
+    
+    # Extract to directory
+    with run.code.extract() as tmp_dir:
+        print(f"Code extracted to: {tmp_dir}")
+        # Use files in tmp_dir...
+```
+
+## Filtering by Tags
+
+```python
+# Get runs with specific tags
+for run in Flow('MyFlow'):
+    if 'production' in run.tags:
+        print(f"Production run: {run.id}")
+
+# Filter in iteration
+production_runs = [
+    run for run in Flow('MyFlow') 
+    if 'production' in run.tags
+]
+```
+
+## Namespace Management
+
+Control which runs are visible:
+
+```python
+from metaflow import namespace, get_namespace, default_namespace
+
+# See current namespace
+print(get_namespace())  # Returns current user
+
+# Switch namespace to see another user's runs
+namespace('other_user')
+
+# See all runs regardless of namespace  
+namespace(None)
+
+# Reset to default
+default_namespace()
+```
+
+## Metadata Provider
+
+Switch between metadata providers:
+
+```python
+from metaflow import metadata, get_metadata, default_metadata
+
+# See current provider
+print(get_metadata())
+
+# Switch to local metadata
+metadata('local')
+
+# Switch to service metadata
+metadata('https://metadata-service.example.com')
+
+# Reset to default
+default_metadata()
+```
+
+## Best Practices
+
+<Tip>
+**Cache flow objects**: If analyzing multiple runs, get the Flow object once and reuse it:
+```python
+flow = Flow('MyFlow')
+for run in flow:
+    # Analyze run...
+```
+</Tip>
+
+<Tip>
+**Use latest_successful_run**: For production analysis, use `latest_successful_run` instead of `latest_run` to skip failed runs.
+</Tip>
+
+<Tip>
+**Check existence**: Always check if artifacts or runs exist before accessing:
+```python
+if 'model' in task.data:
+    model = task.data.model
+```
+</Tip>
+
+<Note>
+**Large artifacts**: Loading large artifacts via `task.data` downloads them locally. For large datasets, consider using external storage (S3, GCS) and storing only references.
+</Note>
+
+## Object Hierarchy
+
+The Client API follows this hierarchy:
+
+```
+Metaflow (all flows)
+  └─ Flow (specific flow)
+      └─ Run (execution of flow)
+          └─ Step (step in run)
+              └─ Task (execution of step)
+                  └─ DataArtifact (data from task)
+```
+
+Each level can be accessed directly by pathspec:
+
+```python
+Flow('MyFlow')
+Run('MyFlow/123') 
+Step('MyFlow/123/train')
+Task('MyFlow/123/train/456')
+DataArtifact('MyFlow/123/train/456/model')
+```
+
+## Related
+
+- [Data Artifacts](/concepts/data-artifacts) - Understanding artifacts
+- [Steps](/concepts/steps) - Learn about step execution
+- [Flows](/concepts/flows) - Understanding flow structure

@@ -1,0 +1,413 @@
+---
+title: "Remote Execution"
+description: "Run Metaflow steps on remote compute infrastructure"
+icon: "server"
+---
+
+Remote execution allows you to run individual steps of your workflow on cloud infrastructure while keeping development and control on your local machine. This is one of Metaflow's core features that enables seamless scaling.
+
+## How It Works
+
+When you add a compute decorator like `@batch` or `@kubernetes` to a step, Metaflow:
+
+1. **Packages your code** and dependencies
+2. **Uploads to cloud storage** (S3, Azure Blob, GCS)
+3. **Launches a remote container** with your specified resources
+4. **Executes the step** on remote compute
+5. **Stores results** back to cloud storage
+6. **Continues** with the next step (local or remote)
+
+```python
+from metaflow import FlowSpec, step, batch
+
+class RemoteFlow(FlowSpec):
+    @step
+    def start(self):
+        # Runs locally on your laptop
+        print("Starting locally")
+        self.data = [1, 2, 3, 4, 5]
+        self.next(self.process)
+    
+    @batch
+    @step
+    def process(self):
+        # Runs remotely on AWS Batch
+        print("Processing on AWS Batch")
+        self.results = [x * 2 for x in self.data]
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Runs locally again
+        print(f"Results: {self.results}")
+```
+
+## Benefits
+
+<CardGroup cols={2}>
+  <Card title="Seamless Development" icon="laptop-code">
+    Develop and test locally, deploy remotely without code changes
+  </Card>
+  
+  <Card title="Resource Flexibility" icon="gauge-high">
+    Use powerful machines only when needed, keeping costs down
+  </Card>
+  
+  <Card title="Automatic Data Flow" icon="arrows-rotate">
+    Data automatically moves between local and remote steps
+  </Card>
+  
+  <Card title="Hybrid Workflows" icon="diagram-project">
+    Mix local and remote execution in the same workflow
+  </Card>
+</CardGroup>
+
+## Choosing Between Local and Remote
+
+Decide where each step should run based on its requirements:
+
+### Run Locally When:
+
+- **Fast iteration** is needed during development
+- **Small data** that fits in memory
+- **Light computation** that completes quickly
+- **Interactive work** requiring immediate feedback
+- **Cost sensitivity** - avoid cloud charges for simple operations
+
+### Run Remotely When:
+
+- **Large memory** requirements (>16GB)
+- **Many CPUs** needed (>4 cores)
+- **GPU acceleration** required
+- **Long-running** jobs (>30 minutes)
+- **Large datasets** that don't fit locally
+- **Production deployment** for reliability
+
+## Data Transfer
+
+Metaflow automatically handles data transfer between steps:
+
+```python
+class DataTransferFlow(FlowSpec):
+    @step
+    def start(self):
+        # Local step creates data
+        self.large_array = np.random.rand(1000000)
+        self.next(self.process)
+    
+    @batch
+    @step
+    def process(self):
+        # Remote step receives data automatically
+        print(f"Array size: {len(self.large_array)}")
+        self.result = self.large_array.sum()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Local step gets results back
+        print(f"Sum: {self.result}")
+```
+
+### Data Storage
+
+Data flows through cloud storage:
+
+- **AWS Batch**: Uses S3 (requires `--datastore=s3`)
+- **Kubernetes**: Uses S3, Azure Blob, or GCS
+- **Local**: Uses local filesystem
+
+<Note>
+Always use `--datastore=s3` (or `azure`/`gs`) when running remote steps. Local datastore doesn't work with remote execution.
+</Note>
+
+## Code Packaging
+
+Metaflow automatically packages your code for remote execution:
+
+```bash
+# Your local code is packaged automatically
+python myflow.py run --with batch
+```
+
+### What Gets Packaged:
+
+- Your flow script
+- Any local Python modules imported by your flow
+- Files in the same directory (by default)
+
+### What Doesn't Get Packaged:
+
+- Large data files (use cloud storage instead)
+- Virtual environment (recreated remotely)
+- System libraries (use Docker images)
+
+### Custom Packaging
+
+Include specific files or directories:
+
+```python
+from metaflow import FlowSpec, step, batch
+
+class CustomPackageFlow(FlowSpec):
+    """
+    Include: mydata/*.csv, config/
+    """
+    
+    @batch
+    @step
+    def start(self):
+        # Can access mydata/*.csv and config/ files
+        pass
+```
+
+## Environment Management
+
+### Conda Environments
+
+Metaflow can recreate your Conda environment remotely:
+
+```python
+from metaflow import FlowSpec, step, batch, conda
+
+class CondaFlow(FlowSpec):
+    @conda(libraries={'pandas': '2.0.0', 'scikit-learn': '1.3.0'})
+    @batch
+    @step
+    def train(self):
+        import pandas as pd
+        import sklearn
+        # Use packages on remote instance
+        pass
+```
+
+### Docker Images
+
+Specify custom Docker images with all dependencies:
+
+```python
+from metaflow import FlowSpec, step, batch
+
+class DockerFlow(FlowSpec):
+    @batch(image='myregistry/ml-image:v1.0')
+    @step
+    def train(self):
+        # Runs in custom Docker container
+        pass
+```
+
+## Monitoring Remote Execution
+
+### Real-time Logs
+
+Logs stream to your terminal automatically:
+
+```bash
+python myflow.py run
+# [remote-step/123] Starting remote execution
+# [remote-step/123] Processing data...
+# [remote-step/123] Complete!
+```
+
+### Check Status
+
+Monitor running tasks:
+
+```bash
+# List all runs
+python myflow.py list runs
+
+# Show specific run
+python myflow.py show 123
+
+# Check logs later
+python myflow.py logs 123/remote-step/456
+```
+
+## Error Handling
+
+Remote execution includes automatic retry and error handling:
+
+```python
+from metaflow import FlowSpec, step, batch, retry
+
+class RobustFlow(FlowSpec):
+    @retry(times=3)
+    @batch
+    @step
+    def flaky_step(self):
+        # Automatically retried up to 3 times on failure
+        risky_operation()
+        self.next(self.end)
+```
+
+### Fallback to Local
+
+Use `@catch` for graceful degradation:
+
+```python
+from metaflow import FlowSpec, step, batch, catch
+
+class FallbackFlow(FlowSpec):
+    @catch(var='compute_failed')
+    @batch
+    @step
+    def remote_step(self):
+        # Try remote execution
+        self.result = expensive_computation()
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        if self.compute_failed:
+            print("Remote execution failed, using cached results")
+```
+
+## Configuration
+
+### AWS Batch Setup
+
+Configure AWS Batch access:
+
+```bash
+# Set AWS credentials
+export AWS_ACCESS_KEY_ID=your_key
+export AWS_SECRET_ACCESS_KEY=your_secret
+
+# Configure Metaflow
+export METAFLOW_BATCH_JOB_QUEUE=your-queue
+export METAFLOW_DATASTORE_SYSROOT_S3=s3://your-bucket/metaflow
+```
+
+### Kubernetes Setup
+
+Configure Kubernetes access:
+
+```bash
+# Ensure kubectl is configured
+kubectl cluster-info
+
+# Set Metaflow config
+export METAFLOW_KUBERNETES_NAMESPACE=metaflow
+export METAFLOW_DATASTORE_SYSROOT_S3=s3://your-bucket/metaflow
+```
+
+See platform-specific pages for detailed setup:
+- [AWS Batch configuration](/scaling/batch-computing)
+- [Kubernetes configuration](/scaling/kubernetes)
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Minimize data transfer">
+    Process data where it lives. Load large datasets from S3 within remote steps rather than passing through local steps.
+    
+    ```python
+    @batch
+    @step
+    def process(self):
+        # Good: Load data directly on remote
+        df = pd.read_csv('s3://bucket/large.csv')
+        
+        # Bad: Don't pass large data from local
+        # self.df = pd.read_csv('local_large.csv')
+    ```
+  </Accordion>
+  
+  <Accordion title="Reuse environments">
+    Docker images and Conda environments are cached. Reusing the same specifications across runs speeds up startup time.
+  </Accordion>
+  
+  <Accordion title="Batch similar operations">
+    Group operations that need similar resources into the same step rather than creating many small remote steps.
+  </Accordion>
+  
+  <Accordion title="Use foreach for parallelism">
+    Process independent items in parallel across multiple remote workers:
+    
+    ```python
+    @step
+    def start(self):
+        self.items = range(100)
+        self.next(self.process, foreach='items')
+    
+    @batch
+    @step
+    def process(self):
+        # Each item runs on separate remote instance
+        self.result = expensive_op(self.input)
+        self.next(self.join)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### ETL Pipeline
+
+```python
+class ETLFlow(FlowSpec):
+    @step
+    def start(self):
+        # Local: Identify data to process
+        self.files = list_s3_files('s3://bucket/raw/')
+        self.next(self.extract, foreach='files')
+    
+    @batch
+    @resources(cpu=4, memory=16000)
+    @step
+    def extract(self):
+        # Remote: Heavy extraction
+        self.data = extract_and_transform(self.input)
+        self.next(self.join)
+    
+    @step
+    def join(self, inputs):
+        # Local: Merge results
+        self.merged = merge_results([i.data for i in inputs])
+        self.next(self.end)
+```
+
+### ML Training
+
+```python
+class TrainFlow(FlowSpec):
+    @step
+    def start(self):
+        # Local: Prepare experiment parameters
+        self.configs = generate_configs()
+        self.next(self.train)
+    
+    @batch(gpu=1, memory=32000)
+    @step
+    def train(self):
+        # Remote GPU: Train model
+        self.model = train_model(self.configs)
+        self.metrics = evaluate(self.model)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Local: Log results
+        print(f"Accuracy: {self.metrics['accuracy']}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AWS Batch" icon="aws" href="/scaling/batch-computing">
+    Configure AWS Batch for remote execution
+  </Card>
+  
+  <Card title="Kubernetes" icon="dharmachakra" href="/scaling/kubernetes">
+    Set up Kubernetes clusters
+  </Card>
+  
+  <Card title="Resources" icon="sliders" href="/scaling/resources-management">
+    Manage CPU, memory, and GPU requirements
+  </Card>
+  
+  <Card title="Distributed" icon="network-wired" href="/scaling/distributed-computing">
+    Scale to multi-node workloads
+  </Card>
+</CardGroup>

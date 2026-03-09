@@ -1,0 +1,112 @@
+---
+title: "@step"
+---
+
+# @step
+
+Marks a method in a FlowSpec as a Metaflow Step.
+
+## Usage
+
+```python
+from metaflow import FlowSpec, step
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Starting flow")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Flow complete")
+```
+
+## Description
+
+The `@step` decorator identifies a method as a step in your Metaflow workflow. Each step represents a unit of work in your flow's execution graph.
+
+**Important:** This decorator needs to be placed as close to the method as possible (i.e., before other decorators).
+
+### Valid decorator ordering:
+
+```python
+@batch
+@step
+def foo(self):
+    pass
+```
+
+### Invalid decorator ordering:
+
+```python
+@step
+@batch
+def foo(self):
+    pass
+```
+
+## Parameters
+
+<ParamField path="f" type="Callable[[FlowSpec], None] | Callable[[FlowSpec, Any], None]" required>
+  Function to make into a Metaflow Step
+</ParamField>
+
+## Returns
+
+<ParamField type="Callable">
+  Function that is a Metaflow Step
+</ParamField>
+
+## Step Types
+
+Metaflow supports several types of steps:
+
+### Linear Step
+A regular step that transitions to a single next step:
+```python
+@step
+def process(self):
+    self.result = self.data * 2
+    self.next(self.end)
+```
+
+### Split Step
+A step that branches into multiple parallel steps:
+```python
+@step
+def start(self):
+    self.next(self.process_a, self.process_b)
+```
+
+### Foreach Step
+A step that creates multiple parallel tasks, one for each element:
+```python
+@step
+def start(self):
+    self.items = [1, 2, 3, 4, 5]
+    self.next(self.process, foreach='items')
+
+@step
+def process(self):
+    # Access the current item with self.input
+    self.result = self.input * 2
+    self.next(self.join)
+```
+
+### Join Step
+A step that merges multiple parallel branches:
+```python
+@step
+def join(self, inputs):
+    # Merge artifacts from parallel branches
+    self.merge_artifacts(inputs)
+    self.next(self.end)
+```
+
+## Best Practices
+
+1. **Keep steps focused**: Each step should perform a single logical unit of work.
+2. **Always call next()**: Every step except the final `end` step must call `self.next()`.
+3. **Name steps clearly**: Use descriptive names that indicate what the step does.
+4. **Start and end**: Flows typically start with a `start` step and end with an `end` step.

@@ -1,0 +1,123 @@
+---
+title: Installation
+description: Install Metaflow on your local machine
+---
+
+Metaflow is available for Python 3.6+ on macOS and Linux. You can install it using pip or conda.
+
+## Requirements
+
+Before installing Metaflow, ensure you have:
+
+- Python 3.6 or later (supports Python 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, and 3.13)
+- pip or conda package manager
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="pip">
+    Install Metaflow from [PyPI](https://pypi.org/project/metaflow/) using pip:
+
+    ```bash
+    pip install metaflow
+    ```
+
+    This will install Metaflow along with its core dependencies:
+    - `requests` - for HTTP operations
+    - `boto3` - for AWS integrations
+  </Tab>
+
+  <Tab title="conda">
+    Install Metaflow from [conda-forge](https://anaconda.org/conda-forge/metaflow):
+
+    ```bash
+    conda install -c conda-forge metaflow
+    ```
+
+    The conda installation includes all necessary dependencies.
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+After installation, verify that Metaflow is properly installed by running:
+
+```bash
+metaflow version
+```
+
+You should see output showing the installed version of Metaflow.
+
+## Optional: Type Stubs
+
+If you're using a type checker like mypy, you can install type stubs for better IDE support:
+
+```bash
+pip install metaflow[stubs]
+```
+
+## Test Your Installation
+
+Create a simple test flow to validate your installation:
+
+```python hello.py
+from metaflow import FlowSpec, step
+
+class HelloFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Metaflow is working!")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Flow completed successfully!")
+
+if __name__ == "__main__":
+    HelloFlow()
+```
+
+Run the flow:
+
+```bash
+python hello.py run
+```
+
+If everything is working correctly, you should see output indicating that your flow executed successfully.
+
+<Note>
+For local development, Metaflow works out of the box without any additional configuration. To leverage cloud compute and production orchestrators, you'll need to [configure your infrastructure](https://outerbounds.com/engineering/welcome/).
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create your first Metaflow flow in minutes
+  </Card>
+  <Card title="Tutorial" icon="graduation-cap" href="/tutorial">
+    Learn Metaflow concepts through hands-on examples
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Python Version Issues
+
+If you encounter Python version compatibility issues, ensure you're using Python 3.6 or later:
+
+```bash
+python --version
+```
+
+### Permission Errors
+
+If you get permission errors during installation, try installing with the `--user` flag:
+
+```bash
+pip install --user metaflow
+```
+
+### Getting Help
+
+If you need help with installation, reach out on the [Metaflow Slack community](http://slack.outerbounds.co/).

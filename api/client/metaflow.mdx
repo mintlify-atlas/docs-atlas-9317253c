@@ -1,0 +1,100 @@
+---
+title: Metaflow
+---
+
+Entry point to all objects in the Metaflow universe.
+
+The `Metaflow` class provides access to all flows and their runs. You can list all flows through the `flows` property or by iterating over the object.
+
+## Constructor
+
+```python
+Metaflow(_current_metadata: Optional[str] = None)
+```
+
+### Parameters
+
+<ParamField path="_current_metadata" type="str" optional>
+  Optional metadata provider string to use instead of the default.
+</ParamField>
+
+## Properties
+
+### flows
+
+```python
+flows: List[Flow]
+```
+
+Returns a list of all flows present in the Metaflow universe.
+
+Only flows present in the current namespace are returned. A flow is present in a namespace if it has at least one run in the namespace.
+
+**Returns:** List of all `Flow` objects.
+
+## Methods
+
+### \_\_iter\_\_()
+
+```python
+__iter__() -> Iterator[Flow]
+```
+
+Iterate over all flows present.
+
+Only flows present in the set namespace are returned. A flow is present in a namespace if it has at least one run that is in the namespace.
+
+**Yields:** `Flow` objects present in the Metaflow universe.
+
+### \_\_getitem\_\_()
+
+```python
+__getitem__(name: str) -> Flow
+```
+
+Returns a specific flow by name.
+
+The flow will only be returned if it is present in the current namespace.
+
+**Parameters:**
+- `name` (str): Name of the flow
+
+**Returns:** `Flow` with the given name.
+
+## Usage Examples
+
+### List all flows
+
+```python
+from metaflow import Metaflow
+
+# Get all flows
+mf = Metaflow()
+for flow in mf:
+    print(flow.id)
+```
+
+### Access a specific flow
+
+```python
+from metaflow import Metaflow
+
+mf = Metaflow()
+flow = mf['MyFlow']
+print(flow.latest_run)
+```
+
+### Get all flows as a list
+
+```python
+from metaflow import Metaflow
+
+mf = Metaflow()
+all_flows = mf.flows
+print(f"Total flows: {len(all_flows)}")
+```
+
+## Related
+
+- [Flow](/api/client/flow) - Flow class for accessing flow objects
+- [namespace()](/api/client/metaflow#namespace-functions) - Configure namespace filtering

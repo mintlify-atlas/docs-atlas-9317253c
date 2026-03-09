@@ -1,0 +1,285 @@
+---
+title: "Runner API"
+description: "Execute and deploy Metaflow flows programmatically with the Runner API"
+icon: "code"
+---
+
+## Overview
+
+The Runner API allows you to execute and deploy Metaflow flows programmatically from Python code. This is useful for:
+
+- Building custom workflow orchestration systems
+- Creating web applications that trigger flows
+- Integrating Metaflow into existing Python applications
+- Automating flow execution and deployment
+- Running flows from Jupyter notebooks
+
+<Note>
+The Runner API requires Python 3.7 or later.
+</Note>
+
+## Core Classes
+
+<CardGroup cols={2}>
+  <Card title="Runner" icon="play" href="/api/runner/runner">
+    Execute flows synchronously or asynchronously
+  </Card>
+  <Card title="Deployer" icon="rocket" href="/api/runner/deployer">
+    Deploy flows to production orchestrators
+  </Card>
+  <Card title="NBRunner" icon="notebook" href="/api/runner/nbrunner">
+    Run flows defined in Jupyter notebooks
+  </Card>
+  <Card title="NBDeployer" icon="cloud-upload" href="/api/runner/nbdeployer">
+    Deploy notebook flows to production
+  </Card>
+</CardGroup>
+
+## Runner Class
+
+The `Runner` class executes flows from Python scripts.
+
+### Basic Usage
+
+```python
+from metaflow import Runner
+
+# Run a flow
+with Runner('myflow.py').run() as running:
+    print(f"Run started: {running.run.pathspec}")
+    running.wait()
+    print(f"Run finished: {running.status}")
+```
+
+### Async Execution
+
+```python
+import asyncio
+from metaflow import Runner
+
+async def run_multiple_flows():
+    # Start multiple flows concurrently
+    runners = [
+        Runner('flow1.py').async_run(),
+        Runner('flow2.py').async_run(),
+        Runner('flow3.py').async_run()
+    ]
+    
+    # Wait for all to complete
+    results = await asyncio.gather(*runners)
+    
+    for result in results:
+        await result.wait()
+        print(f"{result.run.pathspec}: {result.status}")
+
+asyncio.run(run_multiple_flows())
+```
+
+### Streaming Logs
+
+```python
+from metaflow import Runner
+
+with Runner('myflow.py').run() as running:
+    # Stream logs in real-time
+    for line in running.stream_log():
+        print(line)
+```
+
+## Deployer Class
+
+The `Deployer` class deploys flows to production orchestrators.
+
+### Deploy to Argo Workflows
+
+```python
+from metaflow import Deployer
+
+# Deploy to Argo Workflows
+deployment = Deployer('myflow.py').argo_workflows(
+    name='my-production-flow',
+    schedule='@daily'
+)
+
+print(f"Deployed: {deployment.name}")
+
+# Trigger a run
+triggered = deployment.trigger()
+print(f"Triggered run: {triggered.pathspec}")
+
+# Wait for completion
+triggered.wait_for_run()
+print(f"Run status: {triggered.run.successful}")
+```
+
+### Deploy to AWS Step Functions
+
+```python
+from metaflow import Deployer
+
+# Deploy to Step Functions
+deployment = Deployer('myflow.py').step_functions(
+    name='my-production-flow',
+    schedule='cron(0 8 * * ? *)'
+)
+
+# List all deployments
+for flow in deployment.list_deployed_flows():
+    print(f"{flow.name}: {flow.flow_name}")
+```
+
+## NBRunner Class
+
+The `NBRunner` class executes flows defined in Jupyter notebooks.
+
+### Running Notebook Flows
+
+```python
+from metaflow import NBRunner
+
+# Run a flow from a notebook
+with NBRunner('MyFlow').run() as running:
+    running.wait()
+    print(f"Status: {running.status}")
+    print(f"Run ID: {running.run.id}")
+```
+
+### Using in Notebooks
+
+```python
+# In a Jupyter notebook
+from metaflow import FlowSpec, step, NBRunner
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Starting...")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Done!")
+
+# Run the flow
+with NBRunner(MyFlow).run() as running:
+    running.wait()
+```
+
+## Advanced Patterns
+
+### Parameterized Execution
+
+```python
+from metaflow import Runner
+
+# Pass parameters to the flow
+with Runner('myflow.py').run(
+    alpha=0.01,
+    batch_size=128
+) as running:
+    running.wait()
+```
+
+### Error Handling
+
+```python
+from metaflow import Runner
+
+try:
+    with Runner('myflow.py').run() as running:
+        running.wait()
+        
+        if running.status != 'completed':
+            print(f"Flow failed with status: {running.status}")
+            print(f"Return code: {running.returncode}")
+            print(f"Error output:\n{running.stderr}")
+except Exception as e:
+    print(f"Runner error: {e}")
+```
+
+### Custom Environment
+
+```python
+from metaflow import Runner
+import os
+
+# Run with custom environment variables
+env = os.environ.copy()
+env['MY_API_KEY'] = 'secret-key'
+env['METAFLOW_PROFILE'] = 'production'
+
+with Runner('myflow.py', env=env).run() as running:
+    running.wait()
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always use context managers">
+    Always use `with` statements when running flows to ensure proper cleanup:
+    
+    ```python
+    # Good
+    with Runner('flow.py').run() as running:
+        running.wait()
+    
+    # Avoid
+    running = Runner('flow.py').run()
+    running.wait()
+    running.cleanup()  # Easy to forget
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle errors gracefully">
+    Always check the run status and handle failures:
+    
+    ```python
+    with Runner('flow.py').run() as running:
+        running.wait()
+        
+        if running.status == 'completed':
+            print("Success!")
+        else:
+            print(f"Failed: {running.stderr}")
+            # Take corrective action
+    ```
+  </Accordion>
+  
+  <Accordion title="Stream logs for long-running flows">
+    For long-running flows, stream logs to monitor progress:
+    
+    ```python
+    with Runner('flow.py').run() as running:
+        for line in running.stream_log():
+            print(line)
+    ```
+  </Accordion>
+  
+  <Accordion title="Use async for concurrent execution">
+    Use `async_run()` when running multiple flows concurrently:
+    
+    ```python
+    async def run_all():
+        runners = [Runner(f'flow{i}.py').async_run() for i in range(10)]
+        results = await asyncio.gather(*runners)
+        return [r.status for r in results]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Runner API Reference" icon="book" href="/api/runner/runner">
+    Complete Runner class documentation
+  </Card>
+  <Card title="Deployer API Reference" icon="book" href="/api/runner/deployer">
+    Complete Deployer class documentation
+  </Card>
+  <Card title="Production Deployment" icon="rocket" href="/production/overview">
+    Learn about deploying to production
+  </Card>
+  <Card title="Notebooks" icon="notebook" href="/advanced/notebooks">
+    Using Metaflow in Jupyter notebooks
+  </Card>
+</CardGroup>

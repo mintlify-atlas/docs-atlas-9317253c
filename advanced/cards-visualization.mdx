@@ -1,0 +1,465 @@
+---
+title: "Cards & Visualization"
+description: "Create rich visual reports and interactive dashboards with Metaflow Cards"
+icon: "chart-mixed"
+---
+
+## Overview
+
+Metaflow Cards allow you to create rich, visual reports that are automatically saved alongside your flow runs. Cards are perfect for:
+
+- Visualizing model performance metrics
+- Creating data quality reports
+- Documenting experiment results
+- Sharing insights with stakeholders
+- Generating automated reports
+
+<Note>
+Cards are available in Python 3.6+ and require the `@card` decorator.
+</Note>
+
+## Basic Usage
+
+### Adding a Card to a Step
+
+```python
+from metaflow import FlowSpec, step, card
+from metaflow.cards import Markdown, Table, Image
+import matplotlib.pyplot as plt
+
+class VisualizationFlow(FlowSpec):
+    
+    @card
+    @step
+    def start(self):
+        # Add markdown content
+        from metaflow import current
+        current.card.append(Markdown("# Model Training Report"))
+        current.card.append(Markdown("Training completed successfully."))
+        
+        self.accuracy = 0.95
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+
+if __name__ == '__main__':
+    VisualizationFlow()
+```
+
+## Card Components
+
+### Markdown
+
+```python
+from metaflow import current
+from metaflow.cards import Markdown
+
+@card
+@step
+def analyze(self):
+    current.card.append(Markdown("""
+    # Analysis Results
+    
+    ## Key Findings
+    - Model accuracy: 95%
+    - Training time: 2.5 hours
+    - Dataset size: 1M samples
+    
+    **Conclusion**: Model performs well on test data.
+    """))
+```
+
+### Tables
+
+```python
+from metaflow.cards import Table
+import pandas as pd
+
+@card
+@step
+def metrics(self):
+    # Create a metrics table
+    data = [
+        ['Accuracy', '0.95', 'Excellent'],
+        ['Precision', '0.93', 'Good'],
+        ['Recall', '0.94', 'Good'],
+        ['F1 Score', '0.935', 'Excellent']
+    ]
+    
+    current.card.append(Markdown("## Model Metrics"))
+    current.card.append(Table(data, headers=['Metric', 'Value', 'Status']))
+    
+    # Or from a DataFrame
+    df = pd.DataFrame(data, columns=['Metric', 'Value', 'Status'])
+    current.card.append(Table.from_dataframe(df))
+```
+
+### Images and Plots
+
+```python
+from metaflow.cards import Image
+import matplotlib.pyplot as plt
+
+@card
+@step
+def visualize(self):
+    # Create matplotlib plot
+    plt.figure(figsize=(10, 6))
+    plt.plot([1, 2, 3, 4], [1, 4, 9, 16], 'b-', label='Training')
+    plt.plot([1, 2, 3, 4], [1, 3.5, 8, 14], 'r--', label='Validation')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.title('Training Progress')
+    
+    # Add to card
+    current.card.append(Markdown("## Training Progress"))
+    current.card.append(Image.from_matplotlib(plt))
+    
+    # Or from a file
+    plt.savefig('plot.png')
+    current.card.append(Image('plot.png'))
+    
+    # Or from raw bytes
+    import io
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    current.card.append(Image(buf.read()))
+```
+
+### HTML Content
+
+```python
+from metaflow.cards import HTML
+
+@card
+@step
+def custom_viz(self):
+    # Add custom HTML
+    html_content = """
+    <div style="padding: 20px; background: #f0f0f0; border-radius: 5px;">
+        <h2>Custom Visualization</h2>
+        <p>This is custom HTML content.</p>
+    </div>
+    """
+    current.card.append(HTML(html_content))
+```
+
+## Multiple Cards
+
+You can create multiple cards for different audiences:
+
+```python
+from metaflow import FlowSpec, step, card
+
+class MultiCardFlow(FlowSpec):
+    
+    @card(type='summary')
+    @card(type='detailed')
+    @step
+    def analyze(self):
+        from metaflow import current
+        
+        # Summary card for executives
+        current.card['summary'].append(Markdown("# Executive Summary"))
+        current.card['summary'].append(Markdown("Model accuracy: 95%"))
+        
+        # Detailed card for engineers
+        current.card['detailed'].append(Markdown("# Detailed Analysis"))
+        current.card['detailed'].append(Markdown("""
+        ## Technical Details
+        - Architecture: ResNet50
+        - Optimizer: Adam
+        - Learning rate: 0.001
+        - Batch size: 32
+        """))
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Viewing Cards
+
+### Via CLI
+
+```bash
+# View the latest card
+metaflow card view start
+
+# View specific run
+metaflow card view start --run-id 123
+
+# View specific card type
+metaflow card view start --type detailed
+
+# List all cards
+metaflow card list
+```
+
+### Via Client API
+
+```python
+from metaflow import Flow
+
+# Get cards from a run
+run = Flow('VisualizationFlow').latest_run
+step = run['start']
+
+for card in step.task.cards:
+    print(f"Card type: {card.type}")
+    print(f"HTML: {card.html}")
+```
+
+### In Jupyter Notebooks
+
+```python
+from metaflow import Flow
+from IPython.display import HTML, display
+
+# Display cards in notebook
+run = Flow('VisualizationFlow').latest_run
+for step in run:
+    for card in step.task.cards:
+        display(HTML(card.html))
+```
+
+## Advanced Patterns
+
+### Model Performance Dashboard
+
+```python
+from metaflow import FlowSpec, step, card, Parameter
+from metaflow.cards import Markdown, Table, Image
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+class MLDashboard(FlowSpec):
+    
+    model_name = Parameter('model', default='ResNet50')
+    
+    @card
+    @step
+    def train(self):
+        from metaflow import current
+        
+        # Header
+        current.card.append(Markdown(f"# {self.model_name} Training Report"))
+        current.card.append(Markdown(f"Run ID: {current.run_id}"))
+        
+        # Training metrics
+        metrics_data = [
+            ['Accuracy', '0.95', '↑ 2%'],
+            ['Loss', '0.15', '↓ 10%'],
+            ['F1 Score', '0.94', '↑ 1.5%']
+        ]
+        current.card.append(Markdown("## Training Metrics"))
+        current.card.append(Table(metrics_data, headers=['Metric', 'Value', 'Change']))
+        
+        # Training curve
+        plt.figure(figsize=(12, 5))
+        
+        plt.subplot(1, 2, 1)
+        epochs = list(range(1, 11))
+        train_loss = [0.5, 0.4, 0.35, 0.3, 0.25, 0.22, 0.2, 0.18, 0.16, 0.15]
+        val_loss = [0.55, 0.45, 0.38, 0.33, 0.29, 0.26, 0.24, 0.22, 0.20, 0.19]
+        plt.plot(epochs, train_loss, 'b-', label='Training')
+        plt.plot(epochs, val_loss, 'r--', label='Validation')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.title('Loss Curves')
+        
+        plt.subplot(1, 2, 2)
+        train_acc = [0.75, 0.82, 0.87, 0.90, 0.92, 0.93, 0.94, 0.945, 0.948, 0.95]
+        val_acc = [0.73, 0.80, 0.85, 0.88, 0.90, 0.91, 0.92, 0.925, 0.928, 0.93]
+        plt.plot(epochs, train_acc, 'b-', label='Training')
+        plt.plot(epochs, val_acc, 'r--', label='Validation')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+        plt.title('Accuracy Curves')
+        
+        plt.tight_layout()
+        current.card.append(Markdown("## Training Progress"))
+        current.card.append(Image.from_matplotlib(plt))
+        
+        # Confusion matrix
+        plt.figure(figsize=(8, 6))
+        cm = [[85, 5, 3, 2], [4, 90, 4, 2], [3, 5, 88, 4], [2, 3, 5, 90]]
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.title('Confusion Matrix')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        
+        current.card.append(Markdown("## Confusion Matrix"))
+        current.card.append(Image.from_matplotlib(plt))
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Data Quality Report
+
+```python
+@card
+@step
+def data_quality(self):
+    import pandas as pd
+    from metaflow import current
+    from metaflow.cards import Markdown, Table
+    
+    df = pd.read_csv('data.csv')
+    
+    # Report header
+    current.card.append(Markdown("# Data Quality Report"))
+    
+    # Basic statistics
+    current.card.append(Markdown("## Dataset Overview"))
+    stats = [
+        ['Total Rows', f"{len(df):,}"],
+        ['Total Columns', str(len(df.columns))],
+        ['Memory Usage', f"{df.memory_usage().sum() / 1024**2:.2f} MB"]
+    ]
+    current.card.append(Table(stats, headers=['Metric', 'Value']))
+    
+    # Missing values
+    missing = df.isnull().sum()
+    if missing.sum() > 0:
+        current.card.append(Markdown("## Missing Values"))
+        missing_data = [[col, count, f"{count/len(df)*100:.1f}%"] 
+                        for col, count in missing.items() if count > 0]
+        current.card.append(Table(missing_data, 
+                                headers=['Column', 'Missing', 'Percentage']))
+    
+    # Distribution plots
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    if len(numeric_cols) > 0:
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        axes = axes.flatten()
+        for i, col in enumerate(numeric_cols[:6]):
+            df[col].hist(bins=50, ax=axes[i])
+            axes[i].set_title(col)
+        plt.tight_layout()
+        
+        current.card.append(Markdown("## Distributions"))
+        current.card.append(Image.from_matplotlib(plt))
+```
+
+## Card Configuration
+
+### Card Options
+
+```python
+@card(
+    type='default',          # Card type/name
+    timeout=3600,           # Timeout in seconds
+    options={'refresh': 5}   # Card-specific options
+)
+@step
+def process(self):
+    pass
+```
+
+### Custom Card Templates
+
+You can create custom card types:
+
+```python
+from metaflow.cards import MetaflowCard
+from metaflow.cards import Markdown, Table
+
+class CustomCard(MetaflowCard):
+    
+    type = 'custom_dashboard'
+    
+    def __init__(self, options={}):
+        self._components = []
+    
+    def append(self, component):
+        self._components.append(component)
+    
+    def render(self):
+        # Custom rendering logic
+        html = '<div class="custom-card">'
+        for component in self._components:
+            html += component.render()
+        html += '</div>'
+        return html
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep cards focused">
+    Create separate cards for different purposes:
+    
+    ```python
+    @card(type='summary')   # For executives
+    @card(type='technical') # For engineers
+    @card(type='debug')     # For debugging
+    @step
+    def analyze(self):
+        pass
+    ```
+  </Accordion>
+  
+  <Accordion title="Use appropriate visualizations">
+    Choose the right visualization for your data:
+    
+    - **Line plots**: Time series, training curves
+    - **Bar charts**: Comparisons, categorical data
+    - **Heatmaps**: Correlation matrices, confusion matrices
+    - **Scatter plots**: Relationships between variables
+    - **Tables**: Structured data, metrics
+  </Accordion>
+  
+  <Accordion title="Add context with markdown">
+    Always explain what the visualizations show:
+    
+    ```python
+    current.card.append(Markdown("""
+    ## Training Results
+    
+    The model achieved 95% accuracy after 10 epochs.
+    The validation loss stabilized after epoch 7.
+    """))
+    current.card.append(Image.from_matplotlib(plt))
+    ```
+  </Accordion>
+  
+  <Accordion title="Optimize image sizes">
+    Save images at appropriate resolutions:
+    
+    ```python
+    plt.figure(figsize=(10, 6), dpi=100)  # Good resolution
+    # ... create plot ...
+    plt.savefig('plot.png', dpi=100)      # Match DPI
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="@card Decorator" icon="book" href="/api/decorators/card">
+    Complete @card decorator reference
+  </Card>
+  <Card title="Notebooks" icon="notebook" href="/advanced/notebooks">
+    Using cards in Jupyter notebooks
+  </Card>
+  <Card title="Client API" icon="database" href="/concepts/client-api">
+    Accessing cards programmatically
+  </Card>
+  <Card title="Production Monitoring" icon="chart-line" href="/production/monitoring">
+    Monitoring flows in production
+  </Card>
+</CardGroup>

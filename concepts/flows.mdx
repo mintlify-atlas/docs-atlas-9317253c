@@ -1,0 +1,156 @@
+---
+title: Flows
+description: Understanding FlowSpec and flow graphs in Metaflow
+---
+
+Flows are the foundation of Metaflow. A flow is a directed acyclic graph (DAG) of Python functions called steps.
+
+## FlowSpec Base Class
+
+All Metaflow flows inherit from the `FlowSpec` base class:
+
+```python
+from metaflow import FlowSpec, step
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Flow starting")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Flow complete")
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+## Flow Properties
+
+The `FlowSpec` class provides several key properties:
+
+### name
+The name of your flow, derived from the class name:
+```python
+self.name  # Returns 'MyFlow'
+```
+
+### script_name
+The filename containing your flow:
+```python
+self.name  # Returns 'myflow.py'
+```
+
+<Note>
+The `script_name` property is a legacy function. Use the `current` singleton for modern workflows.
+</Note>
+
+## Flow Graph
+
+Metaflow automatically constructs a flow graph from your step definitions. The graph is accessible via:
+
+```python
+self._graph  # FlowGraph object
+```
+
+The flow graph:
+- Maps all steps and their transitions
+- Validates the DAG structure
+- Identifies step types (linear, split, join, foreach)
+- Powers the Metaflow CLI and UI
+
+## Flow Lifecycle
+
+<Steps>
+
+### Define the Flow
+Create a class inheriting from `FlowSpec` and decorate methods with `@step`.
+
+### Specify Transitions
+Use `self.next()` at the end of each step to define the graph structure.
+
+### Execute
+Run your flow from the command line:
+```bash
+python myflow.py run
+```
+
+### Track Results
+Metaflow automatically versions and stores all data artifacts and metadata.
+
+</Steps>
+
+## Flow Graph Structure
+
+Metaflow supports several graph patterns:
+
+### Linear Flow
+```python
+@step
+def start(self):
+    self.next(self.process)
+
+@step
+def process(self):
+    self.next(self.end)
+```
+
+### Fan-out (Static Split)
+```python
+@step
+def start(self):
+    self.next(self.branch_a, self.branch_b)
+```
+
+### Fan-in (Join)
+```python
+@step
+def join(self, inputs):
+    # Merge results from parallel branches
+    self.merge_artifacts(inputs)
+    self.next(self.end)
+```
+
+### Foreach (Dynamic Split)
+```python
+@step
+def start(self):
+    self.items = [1, 2, 3, 4, 5]
+    self.next(self.process_item, foreach='items')
+
+@step  
+def process_item(self):
+    # Runs once per item
+    self.result = self.input * 2
+    self.next(self.join)
+```
+
+## Flow Context
+
+Within a flow, you have access to:
+
+- **self**: The current flow instance
+- **self.index**: Current foreach index (if in a foreach)
+- **self.input**: Current foreach value (if in a foreach)
+- **inputs**: Parent step outputs (in join steps)
+
+## Best Practices
+
+<Tip>
+**Keep steps focused**: Each step should perform a single logical operation. This makes your flow easier to understand, debug, and parallelize.
+</Tip>
+
+<Tip>
+**Use meaningful names**: Step names should clearly describe what the step does. These names appear in logs, UIs, and data artifacts.
+</Tip>
+
+<Note>
+Flows cannot be serialized. If you try to assign `self` or `inputs` to an artifact, you'll get an error. Instead, extract specific attributes you need.
+</Note>
+
+## Related
+
+- [Steps](/concepts/steps) - Learn about step functions
+- [Decorators](/concepts/decorators) - Enhance steps with decorators
+- [Parameters](/concepts/parameters) - Pass arguments to flows

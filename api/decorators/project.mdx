@@ -1,0 +1,400 @@
+---
+title: "@project"
+---
+
+The `@project` decorator organizes flows into projects with isolated namespaces. This is a flow-level decorator that applies to the entire `FlowSpec` class.
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, project
+
+@project(name='recommendation_system')
+class RecommendationFlow(FlowSpec):
+    @step
+    def start(self):
+        print(f"Project: {current.project_name}")
+        print(f"Branch: {current.branch_name}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+
+if __name__ == '__main__':
+    RecommendationFlow()
+```
+
+Run in different environments:
+
+```bash
+# Development (user branch)
+python flow.py run
+
+# Test branch
+python flow.py run --branch test-experiment
+
+# Production deployment
+python flow.py run --production
+```
+
+## Description
+
+The `@project` decorator provides:
+
+1. **Namespace isolation**: Flows with different project names are isolated from each other
+2. **Branch management**: Support for development, test, and production branches
+3. **Team collaboration**: Multiple users can work on the same project without conflicts
+4. **Deployment organization**: Separate production deployments from development work
+
+Project names become part of the deployment identifier, ensuring that flows from different projects don't interfere with each other.
+
+## Parameters
+
+<ParamField path="name" type="str" required>
+  Project name. Must be unique among all projects using the same production scheduler. The name may contain only lowercase alphanumeric characters and underscores. Maximum 128 characters.
+</ParamField>
+
+<ParamField path="branch" type="str" default="None">
+  The branch to use. If not specified:
+  - In development: defaults to `user.<username>`
+  - In production: defaults to `prod`
+  
+  Can also be set via `--branch` command-line option. It's an error to specify both.
+</ParamField>
+
+<ParamField path="production" type="bool" default="False">
+  Whether this is a production deployment. Can also be set via `--production` command-line flag. It's an error to specify both.
+  
+  The final branch name is determined by:
+  - If `branch` is specified:
+    - If `production=True`: `prod.<branch>`
+    - If `production=False`: `test.<branch>`
+  - If `branch` is not specified:
+    - If `production=True`: `prod`
+    - If `production=False`: `user.<username>`
+</ParamField>
+
+## Branch Naming
+
+The complete deployment name follows this pattern:
+```
+<project_name>.<branch>.<flow_name>
+```
+
+Examples:
+- Development: `recommendation_system.user.alice.RecommendationFlow`
+- Test branch: `recommendation_system.test.experiment1.RecommendationFlow`
+- Production: `recommendation_system.prod.RecommendationFlow`
+- Production branch: `recommendation_system.prod.v2.RecommendationFlow`
+
+## Examples
+
+### Basic Project
+
+```python
+@project(name='data_pipeline')
+class DataPipeline(FlowSpec):
+    @step
+    def start(self):
+        from metaflow import current
+        print(f"Running in project: {current.project_name}")
+        print(f"Full name: {current.project_flow_name}")
+        self.next(self.end)
+```
+
+### Production Deployment
+
+```python
+@project(name='ml_service', production=True)
+class MLServiceFlow(FlowSpec):
+    @step
+    def start(self):
+        # This will deploy to production
+        from metaflow import current
+        assert current.is_production == True
+        assert current.branch_name == 'prod'
+        self.next(self.end)
+```
+
+Deploy to production scheduler:
+
+```bash
+python flow.py create  # Deploy with @project(production=True)
+# or
+python flow.py run --production  # Override at runtime
+```
+
+### Custom Branch
+
+```python
+@project(name='experiments', branch='model_v2')
+class ExperimentFlow(FlowSpec):
+    @step
+    def start(self):
+        # Runs in test.model_v2 branch
+        self.next(self.end)
+```
+
+Or specify at runtime:
+
+```bash
+python flow.py run --branch feature-xyz
+```
+
+### Checking Environment
+
+```python
+from metaflow import current
+
+@project(name='adaptive_flow')
+class AdaptiveFlow(FlowSpec):
+    @step
+    def start(self):
+        if current.is_production:
+            print("Running in production mode")
+            self.config = load_production_config()
+        elif current.is_user_branch:
+            print(f"Development mode for user: {current.branch_name}")
+            self.config = load_dev_config()
+        else:
+            print(f"Test branch: {current.branch_name}")
+            self.config = load_test_config()
+        
+        self.next(self.process)
+```
+
+## Current Object Attributes
+
+The `@project` decorator adds these attributes to `current`:
+
+### `current.project_name`
+
+The project name:
+
+```python
+from metaflow import current
+
+@project(name='my_project')
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print(current.project_name)  # 'my_project'
+        self.next(self.end)
+```
+
+### `current.branch_name`
+
+The current branch:
+
+```python
+print(current.branch_name)  
+# 'user.alice' (dev)
+# 'test.experiment' (test)
+# 'prod' (production)
+# 'prod.v2' (production with branch)
+```
+
+### `current.project_flow_name`
+
+The full deployment name:
+
+```python
+print(current.project_flow_name)
+# 'my_project.user.alice.MyFlow'
+# 'my_project.prod.MyFlow'
+```
+
+### `current.is_user_branch`
+
+True if running in a user development branch:
+
+```python
+if current.is_user_branch:
+    print("Development mode")
+```
+
+### `current.is_production`
+
+True if running in production:
+
+```python
+if current.is_production:
+    print("Production mode")
+```
+
+## Command-Line Options
+
+The `@project` decorator adds these top-level options:
+
+```bash
+# Use production branch
+python flow.py run --production
+
+# Use custom branch
+python flow.py run --branch experiment-1
+
+# Deploy production to scheduler
+python flow.py create --production
+
+# Deploy test branch to scheduler
+python flow.py create --branch test-v2
+```
+
+## Best Practices
+
+1. **Unique project names**: Use descriptive, unique names across your organization
+2. **Naming conventions**: Use lowercase with underscores (e.g., `recommendation_engine`)
+3. **Branch strategy**:
+   - Use default user branches for development
+   - Use named test branches for experiments
+   - Use production for deployed services
+4. **Never specify both**: Don't specify branch/production in both decorator and CLI
+5. **Team coordination**: Agree on branch naming conventions with your team
+
+## Common Patterns
+
+### Multi-Environment Flow
+
+```python
+from metaflow import current, Parameter
+
+@project(name='data_pipeline')
+class DataPipeline(FlowSpec):
+    
+    @step
+    def start(self):
+        # Load environment-specific configuration
+        if current.is_production:
+            self.config = {
+                'db': 'prod-db.example.com',
+                'batch_size': 10000,
+                'notify': True
+            }
+        else:
+            self.config = {
+                'db': 'dev-db.example.com',
+                'batch_size': 100,
+                'notify': False
+            }
+        
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        # Use environment-specific config
+        print(f"Connecting to {self.config['db']}")
+        self.next(self.end)
+```
+
+### Team Collaboration
+
+```python
+# Alice's development work
+# python flow.py run
+# -> experiments.user.alice.ABTestFlow
+
+# Bob's development work  
+# python flow.py run
+# -> experiments.user.bob.ABTestFlow
+
+# Shared test branch
+# python flow.py run --branch staging
+# -> experiments.test.staging.ABTestFlow
+
+# Production deployment
+# python flow.py create --production
+# -> experiments.prod.ABTestFlow
+
+@project(name='experiments')
+class ABTestFlow(FlowSpec):
+    @step
+    def start(self):
+        print(f"Running as: {current.project_flow_name}")
+        self.next(self.end)
+```
+
+### Version-Specific Production Branches
+
+```python
+@project(name='ml_model')
+class ModelFlow(FlowSpec):
+    @step
+    def start(self):
+        self.next(self.end)
+
+if __name__ == '__main__':
+    ModelFlow()
+```
+
+Deploy multiple production versions:
+
+```bash
+# Primary production
+python flow.py create --production
+# -> ml_model.prod.ModelFlow
+
+# Production v2 (canary)
+python flow.py create --production --branch v2
+# -> ml_model.prod.v2.ModelFlow
+
+# Production experimental
+python flow.py create --production --branch experimental
+# -> ml_model.prod.experimental.ModelFlow
+```
+
+### Conditional Logic Based on Branch
+
+```python
+@project(name='recommendation')
+class RecommendationFlow(FlowSpec):
+    @step
+    def start(self):
+        from metaflow import current
+        
+        # Different behavior per environment
+        if current.branch_name.startswith('user.'):
+            self.data_sample = 0.01  # 1% sample for dev
+        elif current.branch_name.startswith('test.'):
+            self.data_sample = 0.1   # 10% sample for test
+        else:  # production
+            self.data_sample = 1.0   # Full data for prod
+        
+        self.next(self.process)
+```
+
+## Metadata Tagging
+
+The `@project` decorator automatically adds these metadata tags:
+
+- `project:<project_name>`
+- `project_branch:<branch_name>`
+
+Use these to query runs:
+
+```python
+from metaflow import Flow
+
+# Get all runs for a project
+runs = Flow('MyFlow').runs('project:my_project')
+
+# Get production runs only
+prod_runs = Flow('MyFlow').runs('project_branch:prod')
+
+# Get runs from specific test branch
+test_runs = Flow('MyFlow').runs('project_branch:test.experiment')
+```
+
+## Limitations
+
+- Project name must be unique across all projects using the same scheduler
+- Cannot specify both `branch` in decorator and `--branch` on CLI
+- Cannot specify both `production` in decorator and `--production` on CLI
+- Project names limited to 128 characters
+- Must use lowercase alphanumeric characters and underscores only
+
+## See Also
+
+- [Deployment Guide](/docs/guides/deployment)
+- [Scheduling Flows](/docs/guides/scheduling)
+- [current object](/api/current)

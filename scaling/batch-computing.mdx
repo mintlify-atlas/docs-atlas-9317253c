@@ -1,0 +1,584 @@
+---
+title: "AWS Batch Integration"
+description: "Execute Metaflow steps on AWS Batch for scalable managed compute"
+icon: "aws"
+---
+
+AWS Batch is a fully managed batch computing service that dynamically provisions compute resources based on your requirements. Metaflow's AWS Batch integration makes it easy to run compute-intensive steps on scalable cloud infrastructure.
+
+## Overview
+
+The `@batch` decorator executes a step on AWS Batch:
+
+```python
+from metaflow import FlowSpec, step, batch, resources
+
+class BatchFlow(FlowSpec):
+    @batch
+    @resources(cpu=4, memory=16000)
+    @step
+    def train(self):
+        # This step runs on AWS Batch
+        model = train_model()
+        self.model_path = save_model(model)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Model saved to {self.model_path}")
+```
+
+## Setup
+
+<Steps>
+  <Step title="Configure AWS credentials">
+    Set up AWS access:
+    
+    ```bash
+    export AWS_ACCESS_KEY_ID=your_access_key
+    export AWS_SECRET_ACCESS_KEY=your_secret_key
+    export AWS_DEFAULT_REGION=us-east-1
+    ```
+    
+    Or use AWS CLI:
+    
+    ```bash
+    aws configure
+    ```
+  </Step>
+  
+  <Step title="Set up AWS Batch infrastructure">
+    You need:
+    - An AWS Batch Job Queue
+    - A Compute Environment
+    - An IAM role for job execution
+    - An S3 bucket for Metaflow data
+    
+    See [AWS Batch setup guide](https://docs.aws.amazon.com/batch/) or use Metaflow's CloudFormation templates.
+  </Step>
+  
+  <Step title="Configure Metaflow">
+    Set required environment variables:
+    
+    ```bash
+    export METAFLOW_BATCH_JOB_QUEUE=your-job-queue
+    export METAFLOW_ECS_S3_ACCESS_IAM_ROLE=arn:aws:iam::123456789:role/your-role
+    export METAFLOW_DATASTORE_SYSROOT_S3=s3://your-bucket/metaflow
+    ```
+  </Step>
+  
+  <Step title="Test your setup">
+    Run a simple flow:
+    
+    ```bash
+    python -c "from metaflow import FlowSpec, step, batch
+    class TestFlow(FlowSpec):
+        @batch
+        @step
+        def start(self):
+            print('Running on AWS Batch!')
+            self.next(self.end)
+        @step
+        def end(self):
+            pass
+    
+    TestFlow()" run --datastore=s3
+    ```
+  </Step>
+</Steps>
+
+## Basic Usage
+
+### Simple Batch Step
+
+```python
+from metaflow import FlowSpec, step, batch
+
+class SimpleFlow(FlowSpec):
+    @batch
+    @step
+    def start(self):
+        print("Running on AWS Batch")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Back to local execution")
+```
+
+### Specify Resources
+
+```python
+@batch(cpu=8, memory=32000, gpu=1)
+@step
+def train(self):
+    # Use 8 CPUs, 32GB RAM, and 1 GPU
+    model = train_gpu_model()
+```
+
+### Use Custom Docker Image
+
+```python
+@batch(image='myregistry/ml-image:v1.0')
+@step
+def process(self):
+    # Runs in your custom Docker container
+    import custom_library
+    result = custom_library.process()
+```
+
+## Decorator Parameters
+
+The `@batch` decorator accepts many parameters for fine-grained control:
+
+### Resource Allocation
+
+```python
+@batch(
+    cpu=4,              # Number of CPUs (default: 1)
+    memory=16000,       # Memory in MB (default: 4096)
+    gpu=1,              # Number of GPUs (default: 0)
+)
+@step
+def compute(self):
+    pass
+```
+
+### Container Configuration
+
+```python
+@batch(
+    image='python:3.9',                    # Docker image
+    queue='high-priority-queue',            # Job queue
+    iam_role='arn:aws:iam::123:role/name', # IAM role
+    shared_memory=1024,                     # Shared memory in MiB
+)
+@step
+def train(self):
+    pass
+```
+
+### Advanced Options
+
+```python
+@batch(
+    inferentia=4,           # Number of Inferentia chips
+    efa=1,                  # Elastic Fabric Adapter devices
+    ephemeral_storage=100,  # Ephemeral storage in GiB (Fargate)
+    use_tmpfs=True,         # Enable tmpfs mount
+    tmpfs_size=8192,        # tmpfs size in MiB
+)
+@step
+def process(self):
+    pass
+```
+
+### Full Reference
+
+See the source code for all parameters:
+
+<CodeGroup>
+```python Resource parameters
+@batch(
+    cpu=4,                  # CPUs (int)
+    memory=16000,           # Memory in MB (int)
+    gpu=1,                  # GPUs (int)
+    shared_memory=1024,     # Shared memory in MiB (int)
+)
+```
+
+```python Infrastructure
+@batch(
+    queue='queue-name',     # Batch job queue (str)
+    iam_role='arn:...',     # IAM role ARN (str)
+    execution_role='arn:...', # Fargate execution role (str)
+    image='image:tag',      # Docker image (str)
+)
+```
+
+```python Specialized hardware
+@batch(
+    inferentia=2,           # Inferentia chips (int)
+    trainium=2,             # Trainium chips (alias for inferentia)
+    efa=1,                  # EFA network devices (int)
+)
+```
+
+```python Storage
+@batch(
+    use_tmpfs=True,         # Enable tmpfs (bool)
+    tmpfs_size=4096,        # tmpfs size in MiB (int)
+    tmpfs_path='/tmp',      # tmpfs mount path (str)
+    ephemeral_storage=50,   # Fargate ephemeral storage in GiB
+)
+```
+
+```python Logging
+@batch(
+    log_driver='awslogs',   # Log driver (str)
+    log_options=['awslogs-group:aws/batch/job'], # Log options
+    privileged=False,       # Run as privileged (bool)
+)
+```
+</CodeGroup>
+
+## Resource Management
+
+### Combining with @resources
+
+Use `@resources` for portability:
+
+```python
+from metaflow import FlowSpec, step, batch, resources
+
+class PortableFlow(FlowSpec):
+    @batch
+    @resources(cpu=4, memory=16000, gpu=1)
+    @step
+    def train(self):
+        # Resources specified by @resources
+        pass
+```
+
+Run on different platforms:
+
+```bash
+# Use AWS Batch
+python myflow.py run --datastore=s3
+
+# Switch to Kubernetes (same resource spec)
+python myflow.py run --with kubernetes --datastore=s3
+```
+
+### GPU Support
+
+```python
+@batch(gpu=1, memory=32000)
+@step
+def train_gpu(self):
+    import torch
+    device = torch.device('cuda')
+    model = MyModel().to(device)
+    train(model)
+```
+
+<Note>
+Ensure your job queue is connected to a compute environment with GPU instances (p3, g4, etc.)
+</Note>
+
+### AWS Inferentia/Trainium
+
+```python
+@batch(inferentia=4, memory=64000)
+@step
+def infer(self):
+    # Use AWS Inferentia chips for inference
+    import torch
+    import torch_neuron
+    model = load_neuron_model()
+    predictions = model(data)
+```
+
+## Multi-Node Execution
+
+AWS Batch supports multi-node parallel jobs:
+
+```python
+from metaflow import FlowSpec, step, batch, parallel
+
+class MultiNodeFlow(FlowSpec):
+    @step
+    def start(self):
+        self.next(self.train, num_parallel=4)
+    
+    @parallel
+    @batch(cpu=8, memory=32000)
+    @step
+    def train(self):
+        from metaflow import current
+        print(f"Node {current.parallel.node_index} of {current.parallel.num_nodes}")
+        print(f"Main IP: {current.parallel.main_ip}")
+        
+        # Distributed training logic
+        train_distributed()
+        self.next(self.join)
+    
+    @step
+    def join(self, inputs):
+        print(f"Completed {len(inputs)} parallel tasks")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+See [Distributed Computing](/scaling/distributed-computing) for more details.
+
+## Environment Configuration
+
+### Environment Variables
+
+Set environment variables for AWS Batch steps:
+
+```python
+import os
+
+@batch
+@step
+def train(self):
+    # Environment variables available in container
+    job_id = os.environ['AWS_BATCH_JOB_ID']
+    print(f"Running in job {job_id}")
+```
+
+Automatically available variables:
+- `AWS_BATCH_JOB_ID`: Job ID
+- `AWS_BATCH_JOB_ATTEMPT`: Attempt number
+- `AWS_BATCH_CE_NAME`: Compute environment name
+- `AWS_BATCH_JQ_NAME`: Job queue name
+
+### Custom Docker Images
+
+Build and use custom images:
+
+```dockerfile
+# Dockerfile
+FROM python:3.9
+RUN pip install pandas scikit-learn tensorflow
+COPY model_utils.py /app/
+```
+
+```bash
+# Build and push
+docker build -t myregistry/ml-image:v1.0 .
+docker push myregistry/ml-image:v1.0
+```
+
+```python
+@batch(image='myregistry/ml-image:v1.0')
+@step
+def train(self):
+    import model_utils  # From custom image
+    model = model_utils.train()
+```
+
+### Conda Environments
+
+Metaflow can build Conda environments automatically:
+
+```python
+from metaflow import FlowSpec, step, batch, conda
+
+@conda(libraries={'tensorflow': '2.12.0', 'pandas': '2.0.0'})
+@batch
+@step
+def train(self):
+    import tensorflow as tf
+    import pandas as pd
+    # Dependencies installed automatically
+```
+
+## Monitoring and Debugging
+
+### View Logs
+
+Logs stream automatically:
+
+```bash
+python myflow.py run
+# [train/1] Task is starting.
+# [train/1] Running on AWS Batch job j-abc123
+# [train/1] Training model...
+# [train/1] Task finished successfully.
+```
+
+View logs later:
+
+```bash
+python myflow.py logs 123/train/456
+```
+
+### Check Job Status
+
+```python
+from metaflow import Flow, Step
+
+# Get run
+run = Flow('MyFlow').latest_run
+
+# Check step
+step = run['train']
+for task in step:
+    print(f"Task {task.id}: {task.finished_at}")
+    # Access metadata
+    print(task.metadata_dict.get('aws-batch-job-id'))
+```
+
+### AWS Console
+
+Monitor jobs in the [AWS Batch Console](https://console.aws.amazon.com/batch):
+
+- View job status and logs
+- Check resource utilization
+- Debug failed jobs
+
+## Error Handling
+
+### Automatic Retries
+
+```python
+from metaflow import retry
+
+@retry(times=3)
+@batch
+@step
+def flaky_step(self):
+    # Retried up to 3 times on failure
+    result = potentially_failing_operation()
+```
+
+### Timeout Protection
+
+```python
+from metaflow import timeout
+
+@timeout(hours=2)
+@batch
+@step
+def long_running(self):
+    # Automatically killed after 2 hours
+    expensive_computation()
+```
+
+### Spot Instance Handling
+
+AWS Batch can use spot instances for cost savings. Metaflow automatically handles spot terminations:
+
+```python
+from metaflow import current
+
+@batch
+@step
+def train(self):
+    # Check for spot termination notices
+    if os.path.exists('/tmp/spot_termination_notice'):
+        print("Spot instance terminating, saving checkpoint")
+        save_checkpoint()
+```
+
+## Cost Optimization
+
+<AccordionGroup>
+  <Accordion title="Use spot instances">
+    Configure your compute environment to use spot instances for up to 90% cost savings. Metaflow handles interruptions gracefully.
+  </Accordion>
+  
+  <Accordion title="Right-size resources">
+    Monitor actual usage and adjust CPU/memory allocations. Over-provisioning wastes money.
+    
+    ```python
+    # Check actual usage in CloudWatch
+    # Adjust resources based on metrics
+    @batch(cpu=4, memory=8000)  # Not 8 CPUs, 32GB if you only use 4/8
+    ```
+  </Accordion>
+  
+  <Accordion title="Use efficient instance types">
+    Choose instance families based on workload:
+    - `c5`: Compute-optimized (CPU-heavy)
+    - `r5`: Memory-optimized (large datasets)
+    - `g4`: GPU inference
+    - `p3`/`p4`: GPU training
+  </Accordion>
+  
+  <Accordion title="Enable auto-scaling">
+    Configure your compute environment to scale to zero when idle. AWS Batch manages this automatically.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use @resources for portability" icon="arrows-left-right">
+    Specify requirements with `@resources` rather than `@batch` parameters to easily switch platforms
+  </Card>
+  
+  <Card title="Keep Docker images lean" icon="box">
+    Smaller images start faster and cost less to store. Only include necessary dependencies
+  </Card>
+  
+  <Card title="Handle failures gracefully" icon="shield-check">
+    Use `@retry` and `@catch` decorators for robust production workflows
+  </Card>
+  
+  <Card title="Monitor costs" icon="dollar-sign">
+    Use AWS Cost Explorer to track Batch spending and optimize resource allocation
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Job stuck in RUNNABLE state">
+    **Cause**: Compute environment can't provision resources
+    
+    **Solutions**:
+    - Check compute environment status in AWS console
+    - Verify IAM roles have correct permissions
+    - Ensure requested instance types are available in your region
+    - Check service quotas (vCPU limits)
+  </Accordion>
+  
+  <Accordion title="Job fails immediately">
+    **Cause**: Container startup failure
+    
+    **Solutions**:
+    - Verify Docker image exists and is accessible
+    - Check IAM role has ECR pull permissions
+    - Review container logs in CloudWatch
+    - Test image locally: `docker run your-image`
+  </Accordion>
+  
+  <Accordion title="Out of memory errors">
+    **Cause**: Insufficient memory allocation
+    
+    **Solutions**:
+    - Increase `memory` parameter
+    - Process data in smaller chunks
+    - Use memory-efficient algorithms
+    - Consider using memory-optimized instances (r5)
+  </Accordion>
+  
+  <Accordion title="Cannot access S3 data">
+    **Cause**: Missing IAM permissions
+    
+    **Solutions**:
+    - Verify IAM role has S3 read/write permissions
+    - Check bucket policy allows access
+    - Ensure `METAFLOW_DATASTORE_SYSROOT_S3` is correct
+    - Test with: `aws s3 ls s3://your-bucket/`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Distributed Computing" icon="network-wired" href="/scaling/distributed-computing">
+    Scale to multi-node distributed workloads
+  </Card>
+  
+  <Card title="Resources Management" icon="sliders" href="/scaling/resources-management">
+    Master the @resources decorator
+  </Card>
+  
+  <Card title="Kubernetes" icon="dharmachakra" href="/scaling/kubernetes">
+    Compare with Kubernetes execution
+  </Card>
+  
+  <Card title="Remote Execution" icon="server" href="/scaling/remote-execution">
+    Learn more about remote execution concepts
+  </Card>
+</CardGroup>

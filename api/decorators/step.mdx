@@ -1,0 +1,128 @@
+---
+title: "@step"
+---
+
+The `@step` decorator declares a method as a step in your Metaflow flow. Every step in a flow must be decorated with `@step`.
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Flow started")
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        self.result = 42
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Result: {self.result}")
+
+if __name__ == '__main__':
+    MyFlow()
+```
+
+## Description
+
+The `@step` decorator:
+
+- Identifies methods that should be executed as steps in the workflow
+- Must be the decorator closest to the method definition (after any other decorators)
+- Is required for every method that participates in the flow graph
+
+## Step Requirements
+
+Every step must:
+
+1. Be a method of a `FlowSpec` subclass
+2. Have the `@step` decorator
+3. Call `self.next()` to transition to the next step(s), except for the final step
+
+## Transitions
+
+Steps transition to other steps using `self.next()`:
+
+### Linear Transitions
+
+```python
+@step
+def step_a(self):
+    self.next(self.step_b)
+```
+
+### Branching (foreach)
+
+```python
+@step
+def split(self):
+    self.next(self.process, foreach=['a', 'b', 'c'])
+
+@step
+def process(self):
+    # Runs once for each item
+    self.next(self.join)
+
+@step
+def join(self, inputs):
+    # Joins results from parallel branches
+    self.next(self.end)
+```
+
+### Conditional Branching
+
+```python
+@step
+def branch(self):
+    if self.condition:
+        self.next(self.path_a)
+    else:
+        self.next(self.path_b)
+```
+
+## Combining with Other Decorators
+
+The `@step` decorator must be the last decorator applied:
+
+```python
+@batch(cpu=4, memory=8192)
+@retry(times=3)
+@timeout(hours=1)
+@step  # Must be last
+def my_step(self):
+    pass
+```
+
+## Special Steps
+
+### Start Step
+
+Every flow must have a step named `start`:
+
+```python
+@step
+def start(self):
+    self.next(self.next_step)
+```
+
+### End Step
+
+Every flow must have a step named `end` that doesn't call `self.next()`:
+
+```python
+@step
+def end(self):
+    print("Flow complete")
+```
+
+## See Also
+
+- [Flow Basics](/docs/guides/basics)
+- [Branching and Merging](/docs/guides/branching)
+- [@batch decorator](/api/decorators/batch)
+- [@kubernetes decorator](/api/decorators/kubernetes)

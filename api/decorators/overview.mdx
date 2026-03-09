@@ -1,0 +1,76 @@
+---
+title: Decorators Overview
+---
+
+Decorators are a core feature of Metaflow that allow you to modify the behavior of steps and flows. They are implemented as Python decorators (using the `@` syntax) and can be applied to step methods or flow classes.
+
+## Step Decorators
+
+Step decorators modify the behavior of individual steps in your flow. They control where and how steps execute, handle failures, set timeouts, and more.
+
+### Execution Environment
+
+- [@step](/api/decorators/step) - Declares a method as a step in the flow
+- [@batch](/api/decorators/batch) - Execute step on AWS Batch
+- [@kubernetes](/api/decorators/kubernetes) - Execute step on Kubernetes
+- [@resources](/api/decorators/resources) - Specify compute resources (CPU, memory, GPU)
+
+### Error Handling
+
+- [@retry](/api/decorators/retry) - Automatically retry failed steps
+- [@timeout](/api/decorators/timeout) - Set execution time limits
+- [@catch](/api/decorators/catch) - Gracefully handle step failures
+
+### Environment Configuration
+
+- [@environment](/api/decorators/environment) - Set environment variables
+- [@card](/api/decorators/card) - Generate visual reports
+
+## Flow Decorators
+
+Flow decorators modify the behavior of the entire flow and are applied to the `FlowSpec` class.
+
+- [@project](/api/decorators/project) - Organize flows into projects with namespaces
+
+## Usage
+
+Decorators are applied using Python's `@` syntax:
+
+```python
+from metaflow import FlowSpec, step, batch, retry
+
+class MyFlow(FlowSpec):
+    @retry(times=3)
+    @batch(cpu=4, memory=8192)
+    @step
+    def process_data(self):
+        # Your code here
+        pass
+```
+
+### Decorator Order
+
+When using multiple decorators on a step, the order matters:
+
+1. Error handling decorators (`@retry`, `@catch`) should be at the top
+2. Environment decorators (`@batch`, `@kubernetes`, `@resources`) come next
+3. The `@step` decorator must always be the last decorator (closest to the method)
+
+```python
+@retry(times=3)        # 1. Error handling
+@timeout(hours=1)      # 2. Constraints
+@batch(cpu=4)          # 3. Execution environment
+@step                  # 4. Always last
+def my_step(self):
+    pass
+```
+
+## Using --with
+
+Many decorators can be applied dynamically at runtime using the `--with` command-line option:
+
+```bash
+python myflow.py run --with batch:cpu=8,memory=16384
+```
+
+This is useful for testing different resource configurations without modifying your code.

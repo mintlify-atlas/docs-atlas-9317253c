@@ -1,0 +1,349 @@
+---
+title: Parameters
+description: Parameters and Config system in Metaflow
+---
+
+Parameters allow you to pass arguments to your flows at runtime. Metaflow's parameter system makes it easy to configure flows for different scenarios without modifying code.
+
+## Basic Parameters
+
+Define parameters as class attributes using the `Parameter` class:
+
+```python
+from metaflow import FlowSpec, Parameter, step
+
+class ParameterExample(FlowSpec):
+    # Simple parameter with default
+    learning_rate = Parameter('learning_rate',
+                             help='Learning rate for training',
+                             default=0.01)
+    
+    # Required parameter
+    dataset = Parameter('dataset',
+                       help='Dataset name',
+                       required=True)
+    
+    @step
+    def start(self):
+        print(f"Learning rate: {self.learning_rate}")
+        print(f"Dataset: {self.dataset}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+
+if __name__ == '__main__':
+    ParameterExample()
+```
+
+Run with parameters:
+```bash
+python flow.py run --dataset mnist --learning-rate 0.001
+```
+
+## Parameter Types
+
+Metaflow supports several parameter types:
+
+### String (Default)
+```python
+name = Parameter('name', default='default_value')
+```
+
+### Integer
+```python
+epochs = Parameter('epochs', type=int, default=10)
+```
+
+### Float  
+```python
+learning_rate = Parameter('learning_rate', type=float, default=0.01)
+```
+
+### Boolean
+```python
+use_gpu = Parameter('use_gpu', type=bool, default=True)
+```
+
+### JSON
+```python
+from metaflow import JSONType
+
+config = Parameter('config', 
+                  type=JSONType,
+                  default={'batch_size': 32, 'optimizer': 'adam'})
+```
+
+## Parameter Attributes
+
+The `Parameter` class accepts several attributes:
+
+```python
+Parameter(
+    name='param_name',           # CLI argument name
+    default=None,                # Default value
+    type=str,                    # Type (str, int, float, bool, JSONType)
+    help='Description',          # Help text for --help
+    required=False,              # Whether parameter is required
+    show_default=True,           # Show default in help text
+    separator=None              # Split string into list
+)
+```
+
+### Separator for Lists
+
+```python
+files = Parameter('files',
+                 help='Comma-separated file list', 
+                 separator=',')
+
+# Usage:
+# python flow.py run --files file1.txt,file2.txt,file3.txt
+
+@step
+def start(self):
+    # self.files is now ['file1.txt', 'file2.txt', 'file3.txt']
+    for f in self.files:
+        print(f"Processing {f}")
+    self.next(self.end)
+```
+
+## Deploy-Time Parameters
+
+Define parameters that are evaluated at deployment time:
+
+```python
+from metaflow import Parameter
+import datetime
+
+class MyFlow(FlowSpec):
+    # Evaluated when flow is deployed
+    deploy_time = Parameter('deploy_time',
+                           default=lambda ctx: datetime.datetime.now().isoformat())
+    
+    # Use context for environment info  
+    deployer = Parameter('deployer',
+                        default=lambda ctx: ctx.user_name)
+    
+    @step
+    def start(self):
+        print(f"Deployed at {self.deploy_time} by {self.deployer}")
+        self.next(self.end)
+```
+
+### Parameter Context
+
+Deploy-time functions receive a `ParameterContext`:
+
+```python
+# ParameterContext attributes:
+ctx.flow_name        # Name of the flow
+ctx.user_name        # User running the flow
+ctx.parameter_name   # Name of this parameter
+ctx.logger           # Logger function
+ctx.ds_type          # Datastore type
+ctx.configs          # Config values
+```
+
+## The Config System
+
+Metaflow's Config system provides more advanced configuration:
+
+```python
+from metaflow import FlowSpec, Config, step
+
+class ConfigExample(FlowSpec):
+    # Define a config parameter
+    training_config = Config('training_config', 
+                            default={'lr': 0.01, 'epochs': 10})
+    
+    @step
+    def start(self):
+        # Access config values
+        lr = self.training_config['lr']
+        epochs = self.training_config['epochs']
+        
+        print(f"Training for {epochs} epochs with lr={lr}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Provide config via JSON file:
+```bash
+python flow.py run --training-config config.json
+```
+
+`config.json`:
+```json
+{
+  "lr": 0.001,
+  "epochs": 50,
+  "batch_size": 64
+}
+```
+
+### Config Expressions
+
+Use `config_expr` for dynamic configuration:
+
+```python
+from metaflow import config_expr, Config
+
+class MyFlow(FlowSpec):
+    config = Config('config', default={})
+    
+    # Reference config values in parameters
+    learning_rate = Parameter('learning_rate',
+                             default=config_expr('config.lr', default=0.01))
+    
+    @step
+    def start(self):
+        print(f"Learning rate: {self.learning_rate}")
+        self.next(self.end)
+```
+
+## ConfigValue Objects
+
+Configs are stored as `ConfigValue` objects with metadata:
+
+```python
+@step
+def start(self):
+    # ConfigValue wraps the actual value
+    print(self.training_config.value)      # Get the value
+    print(self.training_config.origin)     # Where it came from
+    print(self.training_config.to_dict())  # Convert to dict
+    self.next(self.end)
+```
+
+## Parameter Validation
+
+Validate parameters in your flow:
+
+```python
+class MyFlow(FlowSpec):
+    learning_rate = Parameter('learning_rate', type=float, default=0.01)
+    epochs = Parameter('epochs', type=int, default=10)
+    
+    @step
+    def start(self):
+        # Validate parameter values
+        if self.learning_rate <= 0 or self.learning_rate > 1:
+            raise ValueError("Learning rate must be between 0 and 1")
+        
+        if self.epochs < 1:
+            raise ValueError("Epochs must be positive")
+        
+        self.next(self.end)
+```
+
+## Accessing Parameters in the Client
+
+Parameters are stored as artifacts and accessible via the Client API:
+
+```python
+from metaflow import Flow
+
+run = Flow('MyFlow').latest_run
+
+# Parameters are regular artifacts
+print(f"Learning rate: {run.data.learning_rate}")
+print(f"Dataset: {run.data.dataset}")
+```
+
+## Best Practices
+
+<Tip>
+**Provide defaults**: Always provide sensible defaults for parameters when possible. This makes testing easier.
+</Tip>
+
+<Tip>
+**Use descriptive names**: Parameter names appear in CLI help. Use clear, descriptive names that explain what the parameter does.
+</Tip>
+
+<Tip>
+**Add help text**: Always provide `help` text for parameters. This shows up in `--help` output.
+</Tip>
+
+<Note>
+**Reserved parameter names**: Avoid these reserved names:
+- `params`, `with`, `tag`, `namespace`, `obj`, `tags`
+- `run-id`, `task-id`, `max-workers`
+- Any name containing underscores is converted to hyphens in CLI
+</Note>
+
+## Parameter Inheritance
+
+Parameters are inherited by all steps:
+
+```python
+class MyFlow(FlowSpec):
+    learning_rate = Parameter('learning_rate', default=0.01)
+    
+    @step
+    def start(self):
+        print(f"LR in start: {self.learning_rate}")
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        # Same parameter available here
+        print(f"LR in process: {self.learning_rate}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"LR in end: {self.learning_rate}")
+```
+
+## Parameter Groups
+
+Organize related parameters:
+
+```python
+class MLFlow(FlowSpec):
+    # Model parameters
+    model_type = Parameter('model_type', default='neural_network')
+    num_layers = Parameter('num_layers', type=int, default=3)
+    hidden_size = Parameter('hidden_size', type=int, default=128)
+    
+    # Training parameters
+    learning_rate = Parameter('learning_rate', type=float, default=0.01)
+    batch_size = Parameter('batch_size', type=int, default=32)
+    epochs = Parameter('epochs', type=int, default=10)
+    
+    # Data parameters
+    train_split = Parameter('train_split', type=float, default=0.8)
+    val_split = Parameter('val_split', type=float, default=0.1)
+    test_split = Parameter('test_split', type=float, default=0.1)
+```
+
+## IncludeFile Special Parameter
+
+Include file contents as parameters:
+
+```python
+from metaflow import IncludeFile
+
+class MyFlow(FlowSpec):
+    config_file = IncludeFile('config',
+                             help='Configuration file',
+                             default='config.yaml')
+    
+    @step
+    def start(self):
+        # File contents are loaded as string
+        import yaml
+        config = yaml.safe_load(self.config_file)
+        self.next(self.end)
+```
+
+## Related
+
+- [Flows](/concepts/flows) - Understanding flow structure  
+- [Steps](/concepts/steps) - Learn about step functions
+- [Client API](/concepts/client-api) - Access parameters from past runs

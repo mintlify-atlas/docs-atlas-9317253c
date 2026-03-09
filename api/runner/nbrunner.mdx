@@ -1,0 +1,236 @@
+---
+title: 'NBRunner'
+description: 'Execute Metaflow flows from Jupyter notebooks'
+---
+
+## Overview
+
+The `NBRunner` class is a wrapper over `Runner` for executing flows defined in a Jupyter notebook cell. It automatically extracts the flow code from the notebook cell and creates a temporary Python file for execution.
+
+## Usage
+
+Instantiate `NBRunner` on the last line of a notebook cell where a flow is defined. Unlike `Runner`, this class is not meant to be used as a context manager.
+
+```python
+from metaflow import FlowSpec, step, NBRunner
+
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Starting")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Done")
+
+# Run the flow
+run = NBRunner(MyFlow).nbrun()
+print(run.finished)
+```
+
+## Constructor
+
+### `NBRunner(flow, show_output=True, profile=None, env=None, base_dir=None, file_read_timeout=3600, **kwargs)`
+
+Create a new NBRunner instance for executing a flow defined in a notebook cell.
+
+**Parameters:**
+
+<ParamField path="flow" type="FlowSpec" required>
+  Flow class defined in the same notebook cell.
+</ParamField>
+
+<ParamField path="show_output" type="bool" default="True">
+  Show the stdout and stderr to the console by default. Only applicable for synchronous `nbrun` and `nbresume` functions.
+</ParamField>
+
+<ParamField path="profile" type="str" default="None">
+  Metaflow profile to use to run this flow. If not specified, the default profile is used (or the one already set using `METAFLOW_PROFILE`).
+</ParamField>
+
+<ParamField path="env" type="Dict[str, str]" default="None">
+  Additional environment variables to set for the run. This overrides the environment set for this process.
+</ParamField>
+
+<ParamField path="base_dir" type="str" default="None">
+  The directory to run the subprocess in. If not specified, the current working directory is used.
+</ParamField>
+
+<ParamField path="file_read_timeout" type="int" default="3600">
+  The timeout in seconds until which we try to read the runner attribute file.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` before the `run` command.
+</ParamField>
+
+**Raises:**
+
+`NBRunnerInitializationError` - If NBRunner is not used in an interactive Python environment (such as Jupyter).
+
+## Methods
+
+### `nbrun(**kwargs)`
+
+Blocking execution of the flow. This method will wait until the run has completed execution.
+
+Unlike `run()`, this method returns a `metaflow.Run` object directly and calls `cleanup()` internally to support a common notebook pattern of executing a flow and retrieving its results immediately.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `run` command, in particular, any parameters accepted by the flow.
+</ParamField>
+
+**Returns:**
+
+`metaflow.Run` - A Run object representing the finished run.
+
+**Example:**
+
+```python
+run = NBRunner(MyFlow).nbrun(alpha=5, tags=["experiment"])
+print(run.finished)
+print(run.data.result)
+```
+
+### `nbresume(**kwargs)`
+
+Blocking resume execution of a previously failed run. This method will wait until the resumed run has completed execution.
+
+Unlike `resume()`, this method returns a `metaflow.Run` object directly and calls `cleanup()` internally.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `resume` command.
+</ParamField>
+
+**Returns:**
+
+`metaflow.Run` - A Run object representing the resumed run.
+
+**Example:**
+
+```python
+run = NBRunner(MyFlow).nbresume()
+print(run.finished)
+```
+
+### `run(**kwargs)`
+
+Runs the flow and returns an `ExecutingRun` object. This is equivalent to `Runner.run()`.
+
+**Note:** When using this method (instead of `nbrun()`), you must call `cleanup()` manually.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `run` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object.
+
+**Example:**
+
+```python
+nb_runner = NBRunner(MyFlow)
+executing_run = nb_runner.run(alpha=5)
+print(executing_run.status)
+nb_runner.cleanup()  # Don't forget to cleanup
+```
+
+### `resume(**kwargs)`
+
+Resumes the flow and returns an `ExecutingRun` object. This is equivalent to `Runner.resume()`.
+
+**Note:** When using this method (instead of `nbresume()`), you must call `cleanup()` manually.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `resume` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object.
+
+### `async_run(**kwargs)`
+
+Non-blocking execution of the flow. This method will return as soon as the run has launched. This method is equivalent to `Runner.async_run()`.
+
+**Note:** This method is asynchronous and needs to be `await`ed. You must call `cleanup()` manually after using this method.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `run` command, in particular, any parameters accepted by the flow.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object representing the run that was started.
+
+**Example:**
+
+```python
+import asyncio
+
+async def run_flow():
+    nb_runner = NBRunner(MyFlow)
+    executing_run = await nb_runner.async_run(alpha=5)
+    await executing_run.wait()
+    print(executing_run.run.finished)
+    nb_runner.cleanup()
+
+await run_flow()  # In a Jupyter notebook with async support
+```
+
+### `async_resume(**kwargs)`
+
+Non-blocking resume execution of the flow. This method will return as soon as the resume has launched. This method is equivalent to `Runner.async_resume()`.
+
+**Note:** This method is asynchronous and needs to be `await`ed. You must call `cleanup()` manually after using this method.
+
+**Parameters:**
+
+<ParamField path="**kwargs" type="Any">
+  Additional arguments that you would pass to `python myflow.py` after the `resume` command.
+</ParamField>
+
+**Returns:**
+
+`ExecutingRun` - An ExecutingRun object representing the resumed run that was started.
+
+### `cleanup()`
+
+Delete any temporary files created during execution.
+
+You must call this method after using `async_run()`, `async_resume()`, `run()`, or `resume()`. You don't need to call this after `nbrun()` or `nbresume()` as they call it internally.
+
+**Example:**
+
+```python
+nb_runner = NBRunner(MyFlow)
+result = nb_runner.run(alpha=5)
+nb_runner.cleanup()  # Clean up temporary files
+```
+
+## Differences from Runner
+
+- **No context manager**: `NBRunner` is not meant to be used as a context manager
+- **Automatic cleanup**: `nbrun()` and `nbresume()` call `cleanup()` internally
+- **Direct Run object**: `nbrun()` and `nbresume()` return a `metaflow.Run` object directly instead of `ExecutingRun`
+- **Notebook-specific**: Automatically extracts flow code from the notebook cell
+- **Environment handling**: Automatically clears the `JPY_PARENT_PID` environment variable to prevent interference
+
+## Notes
+
+- `NBRunner` requires an interactive Python environment (such as Jupyter)
+- The flow must be defined in the same notebook cell as the `NBRunner` instantiation
+- Temporary flow files are created in `base_dir` (or the current working directory)
+- When using non-blocking APIs (`async_run`, `async_resume`, `run`, `resume`), remember to call `cleanup()` explicitly

@@ -1,0 +1,394 @@
+---
+title: "Versioning and Tracking"
+description: "Learn how Metaflow tracks versions, manages runs, and maintains execution history"
+---
+
+## Overview
+
+Metaflow automatically versions every execution of your flow, enabling you to track changes, reproduce results, and compare runs over time.
+
+## Automatic Versioning
+
+Every time you run a flow, Metaflow creates a unique run ID and tracks:
+
+- Code version and dependencies
+- Parameter values
+- Artifacts produced
+- Execution metadata
+- Runtime environment
+
+```bash
+python myflow.py run
+# Output: Run ID: 1234
+
+python myflow.py run
+# Output: Run ID: 1235
+```
+
+Each run gets a unique, sequential run ID that never changes.
+
+## Version Information
+
+Metaflow tracks version information through multiple mechanisms:
+
+### Git-based Versioning
+
+When running from a Git repository, Metaflow captures:
+
+```python
+from metaflow import get_version
+
+# Get full version with git info
+version = get_version(public=False)
+print(version)
+# Output: 2.3.0.post5-gitabc1234-dirty
+
+# Get public version (PEP 440 compliant)
+public_version = get_version(public=True)
+print(public_version)
+# Output: 2.3.0.post5
+```
+
+### Version String Format
+
+The version string contains:
+- **Tag**: Base version (e.g., `2.3.0`)
+- **Post**: Commits since tag (e.g., `.post5`)
+- **Hash**: Git commit hash (e.g., `-gitabc1234`)
+- **Dirty**: Uncommitted changes (e.g., `-dirty`)
+
+## Accessing Run History
+
+Use the Client API to access historical runs:
+
+```python
+from metaflow import Flow
+
+# Get all runs
+flow = Flow('MyFlow')
+for run in flow:
+    print(f"Run: {run.id}, Created: {run.created_at}")
+```
+
+### Get Specific Runs
+
+```python
+# Latest run
+latest = Flow('MyFlow').latest_run
+
+# Specific run by ID
+run = Flow('MyFlow')['1234']
+
+# Latest successful run
+for run in Flow('MyFlow'):
+    if run.successful:
+        latest_successful = run
+        break
+```
+
+### Filter by Tags
+
+```python
+# Get runs with specific tag
+tagged_runs = [run for run in Flow('MyFlow') 
+               if 'production' in run.tags]
+```
+
+## Tracking Code Changes
+
+Metaflow stores a snapshot of your code with every run:
+
+```python
+from metaflow import Flow
+
+run = Flow('MyFlow')['1234']
+
+# Access the code used for this run
+code = run.code
+print(code.tarball)  # Path to code archive
+```
+
+### Comparing Code Versions
+
+```bash
+# Compare two runs
+python -m metaflow.cmd.diff 1234 1235
+```
+
+## Parameter Versioning
+
+Parameters are automatically tracked with each run:
+
+```python
+from metaflow import FlowSpec, step, Parameter
+
+class VersionedFlow(FlowSpec):
+    
+    model_version = Parameter('model-version',
+                              help='Model version to use',
+                              default='v1')
+    
+    learning_rate = Parameter('learning-rate',
+                              help='Learning rate',
+                              default=0.001)
+    
+    @step
+    def start(self):
+        print(f"Using model {self.model_version}")
+        print(f"Learning rate: {self.learning_rate}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Access parameter values from past runs:
+
+```python
+from metaflow import Flow
+
+run = Flow('VersionedFlow')['1234']
+print(f"Model version: {run.data.model_version}")
+print(f"Learning rate: {run.data.learning_rate}")
+```
+
+## Artifact Versioning
+
+Every artifact is versioned and stored:
+
+```python
+from metaflow import FlowSpec, step
+
+class DataFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        self.data = load_data()  # Automatically versioned
+        self.model = train_model(self.data)  # Automatically versioned
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Access artifacts from any run:
+
+```python
+from metaflow import Flow
+
+# Get artifact from specific run
+run = Flow('DataFlow')['1234']
+model = run['start'].task.data.model
+
+# Compare artifacts across runs
+run1 = Flow('DataFlow')['1234']
+run2 = Flow('DataFlow')['1235']
+
+model1 = run1['start'].task.data.model
+model2 = run2['start'].task.data.model
+```
+
+## Reproducibility
+
+Metaflow enables full reproducibility:
+
+### Resume Failed Runs
+
+```bash
+# Resume from a failed run
+python myflow.py resume 1234
+```
+
+### Clone Runs
+
+```bash
+# Clone a run with same parameters
+python myflow.py run --clone 1234
+```
+
+### Reproduce Results
+
+```python
+from metaflow import Flow
+
+# Get parameters from successful run
+old_run = Flow('MyFlow')['1234']
+params = {
+    'model_version': old_run.data.model_version,
+    'learning_rate': old_run.data.learning_rate
+}
+
+# Run with same parameters
+import subprocess
+subprocess.run([
+    'python', 'myflow.py', 'run',
+    '--model-version', params['model_version'],
+    '--learning-rate', str(params['learning_rate'])
+])
+```
+
+## INFO File
+
+Metaflow stores version information in an INFO file during execution:
+
+```python
+from metaflow.meta_files import read_info_file
+
+# Read INFO file
+info = read_info_file()
+if info:
+    print(f"Metaflow version: {info.get('metaflow_version')}")
+    print(f"Flow name: {info.get('flow_name')}")
+    print(f"Run ID: {info.get('run_id')}")
+```
+
+The INFO file contains:
+- Metaflow version
+- Extension versions
+- Flow metadata
+- Environment information
+
+## Environment Tracking
+
+Metaflow captures the execution environment:
+
+```python
+from metaflow import Flow
+
+run = Flow('MyFlow').latest_run
+
+# Access environment information
+for step in run:
+    task = step.task
+    print(f"Python version: {task.metadata_dict.get('python_version')}")
+    print(f"User: {task.metadata_dict.get('user')}")
+    print(f"Runtime: {task.metadata_dict.get('runtime')}")
+```
+
+## Comparing Runs
+
+Compare multiple runs to track progress:
+
+```python
+from metaflow import Flow
+import pandas as pd
+
+# Collect metrics from multiple runs
+metrics = []
+for run in Flow('TrainingFlow'):
+    if run.successful:
+        end_task = run['end'].task
+        metrics.append({
+            'run_id': run.id,
+            'timestamp': run.created_at,
+            'accuracy': end_task.data.accuracy,
+            'loss': end_task.data.loss,
+            'model_version': run.data.model_version
+        })
+
+df = pd.DataFrame(metrics)
+print(df.sort_values('timestamp'))
+```
+
+## Production Versioning Best Practices
+
+<AccordionGroup>
+
+<Accordion title="Use semantic versioning for models" icon="tag">
+Include version in your parameters:
+
+```python
+class ModelFlow(FlowSpec):
+    model_version = Parameter('model-version',
+                             default='v1.2.3')
+```
+</Accordion>
+
+<Accordion title="Tag production runs" icon="bookmark">
+Tag runs deployed to production:
+
+```python
+from metaflow import Flow
+
+run = Flow('MyFlow').latest_run
+run.add_tag('production')
+run.add_tag('deployed-2024-03-09')
+```
+</Accordion>
+
+<Accordion title="Track experiment lineage" icon="code-branch">
+Link related experiments:
+
+```python
+@step
+def start(self):
+    # Reference parent experiment
+    self.parent_run_id = '1234'
+    self.experiment_name = 'lr-tuning-001'
+    self.next(self.end)
+```
+</Accordion>
+
+<Accordion title="Document breaking changes" icon="file-lines">
+Use artifacts to document changes:
+
+```python
+@step
+def start(self):
+    self.changelog = {
+        'version': '2.0.0',
+        'breaking_changes': [
+            'Changed model architecture',
+            'Updated preprocessing pipeline'
+        ]
+    }
+    self.next(self.end)
+```
+</Accordion>
+
+</AccordionGroup>
+
+## Version Control Integration
+
+Integrate with Git for complete version control:
+
+```python
+import subprocess
+from metaflow import FlowSpec, step
+
+class GitVersionedFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        # Capture git information
+        self.git_commit = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD']
+        ).decode().strip()
+        
+        self.git_branch = subprocess.check_output(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
+        ).decode().strip()
+        
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Commit: {self.git_commit}")
+        print(f"Branch: {self.git_branch}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+
+<Card title="Tagging" icon="tags" href="/guides/tagging">
+  Learn how to tag runs and artifacts
+</Card>
+
+<Card title="Best Practices" icon="star" href="/guides/best-practices">
+  Follow versioning best practices
+</Card>
+
+</CardGroup>

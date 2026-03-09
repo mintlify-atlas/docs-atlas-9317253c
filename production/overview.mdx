@@ -1,0 +1,159 @@
+---
+title: Production Deployment Overview
+description: Deploy and manage Metaflow workflows in production environments
+---
+
+Metaflow provides robust production deployment capabilities that allow you to schedule and orchestrate your workflows on various platforms. Once your flow is tested locally, you can deploy it to production with a single command.
+
+## Deployment Platforms
+
+Metaflow supports multiple orchestration platforms for production deployments:
+
+<CardGroup cols={3}>
+  <Card title="AWS Step Functions" icon="aws" href="/production/orchestrators#aws-step-functions">
+    Deploy to AWS Step Functions for serverless orchestration
+  </Card>
+  <Card title="Argo Workflows" icon="kubernetes" href="/production/orchestrators#argo-workflows">
+    Deploy to Kubernetes-native Argo Workflows
+  </Card>
+  <Card title="Apache Airflow" icon="wind" href="/production/orchestrators#apache-airflow">
+    Generate Airflow DAGs from Metaflow flows
+  </Card>
+</CardGroup>
+
+## Key Concepts
+
+### Production Tokens
+
+Production tokens are used to organize and secure production deployments. Each deployment is associated with a production token that:
+
+- Creates a unique namespace for the flow's runs
+- Controls access to redeploy or modify the flow
+- Ensures multiple deployments don't conflict
+
+When you deploy a flow for the first time, Metaflow generates a production token:
+
+```bash
+python myflow.py step-functions create
+```
+
+The token is displayed and cached locally. To authorize team members to redeploy:
+
+```bash
+python myflow.py step-functions create --authorize <token>
+```
+
+### Namespaces
+
+Production runs are organized in namespaces with the format `production:<token>`. To analyze production results in notebooks:
+
+```python
+from metaflow import namespace, Flow
+
+namespace('production:<token>')
+run = Flow('MyFlow').latest_run
+```
+
+### Project Branches
+
+When using the `@project` decorator, Metaflow automatically manages namespaces for different branches:
+
+```python
+from metaflow import FlowSpec, step, project
+
+@project(name='my_project')
+class MyFlow(FlowSpec):
+    @step
+    def start(self):
+        pass
+```
+
+Deploy to different branches:
+
+```bash
+# Deploy to production branch
+python myflow.py --branch prod step-functions create
+
+# Deploy to user branch
+python myflow.py --branch user.alice step-functions create
+```
+
+## Deployment Workflow
+
+A typical production deployment workflow:
+
+1. **Develop and test locally**
+   ```bash
+   python myflow.py run
+   ```
+
+2. **Deploy to staging**
+   ```bash
+   python myflow.py --branch staging step-functions create
+   ```
+
+3. **Test the production deployment**
+   ```bash
+   python myflow.py step-functions trigger
+   ```
+
+4. **Deploy to production**
+   ```bash
+   python myflow.py --branch prod step-functions create
+   ```
+
+5. **Monitor execution**
+   ```bash
+   python myflow.py step-functions list-runs
+   ```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use version control">
+    Always commit your flow code to version control before deploying. This ensures reproducibility and enables rollbacks if needed.
+  </Accordion>
+  
+  <Accordion title="Test with small datasets first">
+    Before deploying to production, test your flow with a representative subset of data to catch potential issues early.
+  </Accordion>
+  
+  <Accordion title="Set resource limits">
+    Use decorators like `@resources` to set appropriate CPU and memory limits for production workloads.
+  </Accordion>
+  
+  <Accordion title="Handle failures gracefully">
+    Use `@retry` and `@catch` decorators to handle transient failures and make your flows more resilient.
+  </Accordion>
+  
+  <Accordion title="Tag your deployments">
+    Use `--tag` to annotate deployments with version numbers or commit hashes for easier tracking.
+  </Accordion>
+</AccordionGroup>
+
+## Configuration
+
+Production deployments require proper configuration of:
+
+- **Datastore**: S3, Azure Blob Storage, or Google Cloud Storage for artifact storage
+- **Metadata service**: For tracking run metadata and lineage
+- **Compute environment**: AWS Batch, Kubernetes, or other compute platforms
+
+Refer to the [Configuration Guide](/essentials/configuration) for details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scheduling Flows" icon="clock" href="/production/scheduling">
+    Learn how to schedule flows with cron expressions
+  </Card>
+  <Card title="Event Triggering" icon="bolt" href="/production/event-triggering">
+    Trigger flows based on events and upstream dependencies
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/production/monitoring">
+    Monitor and debug production flows
+  </Card>
+  <Card title="Orchestrators" icon="sitemap" href="/production/orchestrators">
+    Deep dive into specific orchestrator platforms
+  </Card>
+</CardGroup>

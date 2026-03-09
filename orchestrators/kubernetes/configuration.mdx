@@ -1,0 +1,706 @@
+---
+title: "Kubernetes Configuration"
+description: "Complete reference for configuring Metaflow to run on Kubernetes"
+---
+
+## Configuration Overview
+
+Metaflow's Kubernetes integration is configured through environment variables and decorator parameters. This page provides a comprehensive reference for all available configuration options.
+
+## Environment Variables
+
+### Basic Configuration
+
+<ParamField path="METAFLOW_KUBERNETES_NAMESPACE" type="string" default="default">
+  Kubernetes namespace for running Metaflow jobs.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_NAMESPACE=metaflow-prod
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_SERVICE_ACCOUNT" type="string" default="default">
+  Kubernetes ServiceAccount to use for pod execution. This account needs appropriate RBAC permissions.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_SERVICE_ACCOUNT=metaflow-runner
+  ```
+</ParamField>
+
+### Container Configuration
+
+<ParamField path="METAFLOW_KUBERNETES_CONTAINER_IMAGE" type="string">
+  Default Docker image for Metaflow tasks. If not specified, a vanilla Python image matching your local Python version is used.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_CONTAINER_IMAGE=myregistry.io/metaflow:latest
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_CONTAINER_REGISTRY" type="string">
+  Container registry URL prepended to image names that don't include a registry.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_CONTAINER_REGISTRY=myregistry.io
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_IMAGE_PULL_POLICY" type="string" default="IfNotPresent">
+  Image pull policy for containers. Options: `Always`, `IfNotPresent`, `Never`.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_IMAGE_PULL_POLICY=Always
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_IMAGE_PULL_SECRETS" type="json">
+  JSON list of image pull secret names for accessing private registries.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_IMAGE_PULL_SECRETS='["regcred", "docker-registry-secret"]'
+  ```
+</ParamField>
+
+### Resource Defaults
+
+<ParamField path="METAFLOW_KUBERNETES_CPU" type="string" default="1">
+  Default CPU request for Kubernetes pods (in cores).
+  
+  ```bash
+  export METAFLOW_KUBERNETES_CPU=2
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_MEMORY" type="string" default="4096">
+  Default memory request for Kubernetes pods (in MB).
+  
+  ```bash
+  export METAFLOW_KUBERNETES_MEMORY=8192
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_DISK" type="string" default="10240">
+  Default ephemeral disk request for Kubernetes pods (in MB).
+  
+  ```bash
+  export METAFLOW_KUBERNETES_DISK=20480
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_GPU_VENDOR" type="string" default="nvidia">
+  Default GPU vendor. Options: `nvidia`, `amd`.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_GPU_VENDOR=nvidia
+  ```
+</ParamField>
+
+### Storage Configuration
+
+<ParamField path="METAFLOW_DATASTORE_SYSROOT_S3" type="string">
+  S3 bucket URL for storing Metaflow artifacts and code packages.
+  
+  ```bash
+  export METAFLOW_DATASTORE_SYSROOT_S3=s3://my-metaflow-bucket/metaflow
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_DATASTORE_SYSROOT_AZURE" type="string">
+  Azure Blob Storage URL for storing Metaflow artifacts.
+  
+  ```bash
+  export METAFLOW_DATASTORE_SYSROOT_AZURE=wasbs://container@account.blob.core.windows.net/metaflow
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_DATASTORE_SYSROOT_GS" type="string">
+  Google Cloud Storage bucket URL for storing Metaflow artifacts.
+  
+  ```bash
+  export METAFLOW_DATASTORE_SYSROOT_GS=gs://my-metaflow-bucket/metaflow
+  ```
+</ParamField>
+
+### Scheduling and Node Selection
+
+<ParamField path="METAFLOW_KUBERNETES_NODE_SELECTOR" type="string">
+  Comma-separated list of node selector key-value pairs.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_NODE_SELECTOR="node.kubernetes.io/instance-type=m5.xlarge,topology.kubernetes.io/zone=us-east-1a"
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_TOLERATIONS" type="json">
+  JSON list of tolerations for scheduling pods on tainted nodes.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_TOLERATIONS='[{"key":"dedicated","operator":"Equal","value":"ml","effect":"NoSchedule"}]'
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_QOS" type="string" default="Burstable">
+  Default Quality of Service class for pods. Options: `Guaranteed`, `Burstable`.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_QOS=Guaranteed
+  ```
+</ParamField>
+
+### Storage and Volumes
+
+<ParamField path="METAFLOW_KUBERNETES_PERSISTENT_VOLUME_CLAIMS" type="json">
+  JSON object mapping PVC names to mount paths.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_PERSISTENT_VOLUME_CLAIMS='{"data-pvc":"/mnt/data","models-pvc":"/mnt/models"}'
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_SHARED_MEMORY" type="integer">
+  Shared memory size in MB for /dev/shm.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_SHARED_MEMORY=8192
+  ```
+</ParamField>
+
+### Security
+
+<ParamField path="METAFLOW_KUBERNETES_SECRETS" type="string">
+  Comma-separated list of Kubernetes secret names to mount as environment variables.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_SECRETS="api-keys,database-credentials"
+  ```
+</ParamField>
+
+### Labels and Annotations
+
+<ParamField path="METAFLOW_KUBERNETES_LABELS" type="string">
+  Comma-separated list of labels in key=value format.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_LABELS="team=ml,environment=production,cost-center=engineering"
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_ANNOTATIONS" type="string">
+  Comma-separated list of annotations in key=value format.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_ANNOTATIONS="prometheus.io/scrape=true,prometheus.io/port=8080"
+  ```
+</ParamField>
+
+### Advanced Options
+
+<ParamField path="METAFLOW_KUBERNETES_PORT" type="integer">
+  Port number to expose from containers (used with @parallel for multi-node communication).
+  
+  ```bash
+  export METAFLOW_KUBERNETES_PORT=29500
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_FETCH_EC2_METADATA" type="boolean" default="false">
+  Fetch EC2 instance metadata when running on AWS EKS.
+  
+  ```bash
+  export METAFLOW_KUBERNETES_FETCH_EC2_METADATA=true
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_KUBERNETES_SANDBOX_INIT_SCRIPT" type="string">
+  Shell script to execute before task initialization (for custom environment setup).
+  
+  ```bash
+  export METAFLOW_KUBERNETES_SANDBOX_INIT_SCRIPT='echo "Setting up environment" && pip install custom-package'
+  ```
+</ParamField>
+
+### Argo Workflows Configuration
+
+<ParamField path="METAFLOW_ARGO_WORKFLOWS_UI_URL" type="string">
+  URL for the Argo Workflows UI.
+  
+  ```bash
+  export METAFLOW_ARGO_WORKFLOWS_UI_URL=https://argo.example.com
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_ARGO_WORKFLOWS_KUBERNETES_SECRETS" type="string">
+  Comma-separated list of secrets to mount in Argo Workflows.
+  
+  ```bash
+  export METAFLOW_ARGO_WORKFLOWS_KUBERNETES_SECRETS="workflow-secrets"
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_ARGO_EVENTS_WEBHOOK_URL" type="string">
+  Webhook URL for Argo Events integration.
+  
+  ```bash
+  export METAFLOW_ARGO_EVENTS_WEBHOOK_URL=http://webhook-eventsource-svc.argo-events:12000/webhook
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_ARGO_EVENTS_EVENT_BUS" type="string" default="default">
+  Name of the Argo Events EventBus.
+  
+  ```bash
+  export METAFLOW_ARGO_EVENTS_EVENT_BUS=metaflow-events
+  ```
+</ParamField>
+
+<ParamField path="METAFLOW_ARGO_EVENTS_SENSOR_NAMESPACE" type="string">
+  Namespace for Argo Events Sensors.
+  
+  ```bash
+  export METAFLOW_ARGO_EVENTS_SENSOR_NAMESPACE=argo-events
+  ```
+</ParamField>
+
+## Decorator Parameters
+
+The `@kubernetes` decorator accepts the following parameters to override defaults:
+
+### Resource Specification
+
+```python
+@kubernetes(
+    cpu=8,                  # Number of CPU cores (int or float)
+    memory=32000,           # Memory in MB (int)
+    disk=50000,             # Ephemeral disk in MB (int)
+    gpu=2,                  # Number of GPUs (int)
+    gpu_vendor='nvidia',    # GPU vendor: 'nvidia' or 'amd'
+    shared_memory=8192      # Shared memory in MB (int)
+)
+```
+
+### Container Configuration
+
+```python
+@kubernetes(
+    image='custom-image:v1.0',              # Docker image
+    image_pull_policy='Always',             # Pull policy
+    image_pull_secrets=['regcred']          # Image pull secrets (list)
+)
+```
+
+### Scheduling and Placement
+
+```python
+@kubernetes(
+    namespace='custom-namespace',           # Kubernetes namespace
+    service_account='custom-sa',            # Service account
+    node_selector={                         # Node selector (dict)
+        'node.kubernetes.io/instance-type': 'g4dn.xlarge',
+        'topology.kubernetes.io/zone': 'us-east-1a'
+    },
+    tolerations=[                           # Tolerations (list of dicts)
+        {
+            'key': 'dedicated',
+            'operator': 'Equal',
+            'value': 'ml-workloads',
+            'effect': 'NoSchedule'
+        }
+    ],
+    qos='Guaranteed'                        # QoS class: 'Guaranteed' or 'Burstable'
+)
+```
+
+### Storage and Volumes
+
+```python
+@kubernetes(
+    persistent_volume_claims={              # PVC mounts (dict)
+        'data-pvc': '/mnt/data',
+        'models-pvc': '/mnt/models'
+    },
+    use_tmpfs=True,                         # Enable tmpfs
+    tmpfs_size=10240,                       # tmpfs size in MB
+    tmpfs_path='/tmp',                      # tmpfs mount path
+    tmpfs_tempdir=True                      # Use tmpfs for METAFLOW_TEMPDIR
+)
+```
+
+### Security
+
+```python
+@kubernetes(
+    secrets=['api-keys', 'db-creds'],       # Kubernetes secrets (list)
+    security_context={                       # Security context (dict)
+        'run_as_user': 1000,
+        'run_as_group': 1000,
+        'run_as_non_root': True,
+        'privileged': False
+    }
+)
+```
+
+### Metadata
+
+```python
+@kubernetes(
+    labels={                                 # Pod labels (dict)
+        'team': 'ml',
+        'environment': 'production'
+    },
+    annotations={                            # Pod annotations (dict)
+        'prometheus.io/scrape': 'true',
+        'prometheus.io/port': '8080'
+    }
+)
+```
+
+### Advanced Options
+
+```python
+@kubernetes(
+    port=29500,                             # Port for multi-node communication
+    compute_pool='high-priority'            # Compute pool (maps to node selector)
+)
+```
+
+## Complete Configuration Example
+
+Here's a complete example showing environment variables and decorator usage:
+
+### Environment Setup
+
+```bash
+# config/kubernetes.env
+
+# Cluster configuration
+export METAFLOW_KUBERNETES_NAMESPACE=metaflow-prod
+export METAFLOW_KUBERNETES_SERVICE_ACCOUNT=metaflow-runner
+
+# Container defaults
+export METAFLOW_KUBERNETES_CONTAINER_IMAGE=myregistry.io/metaflow:2.10.0
+export METAFLOW_KUBERNETES_CONTAINER_REGISTRY=myregistry.io
+export METAFLOW_KUBERNETES_IMAGE_PULL_POLICY=IfNotPresent
+export METAFLOW_KUBERNETES_IMAGE_PULL_SECRETS='["regcred"]'
+
+# Resource defaults
+export METAFLOW_KUBERNETES_CPU=4
+export METAFLOW_KUBERNETES_MEMORY=16384
+export METAFLOW_KUBERNETES_DISK=20480
+
+# Storage
+export METAFLOW_DATASTORE_SYSROOT_S3=s3://metaflow-prod-bucket/metaflow
+
+# Scheduling
+export METAFLOW_KUBERNETES_NODE_SELECTOR="node.kubernetes.io/purpose=metaflow"
+export METAFLOW_KUBERNETES_TOLERATIONS='[{"key":"metaflow","operator":"Equal","value":"true","effect":"NoSchedule"}]'
+
+# Security
+export METAFLOW_KUBERNETES_SECRETS=default-secrets
+
+# Labels
+export METAFLOW_KUBERNETES_LABELS="team=ml,cost-center=engineering"
+```
+
+### Flow Implementation
+
+```python
+from metaflow import FlowSpec, step, kubernetes, Parameter
+
+class ProductionMLFlow(FlowSpec):
+    
+    model_version = Parameter('model_version', default='v1.0')
+    
+    @step
+    def start(self):
+        # Runs locally or on Argo
+        print(f"Starting training for model {self.model_version}")
+        self.next(self.prepare)
+    
+    @kubernetes(
+        # Override defaults for data preparation
+        cpu=2,
+        memory=8192,
+        labels={'step': 'data-prep'}
+    )
+    @step
+    def prepare(self):
+        # Light data preparation
+        self.train_data = load_and_prepare_data()
+        self.next(self.train)
+    
+    @kubernetes(
+        # Heavy training workload
+        cpu=16,
+        memory=65536,
+        gpu=4,
+        gpu_vendor='nvidia',
+        disk=102400,
+        node_selector={
+            'node.kubernetes.io/instance-type': 'p3.8xlarge',
+            'topology.kubernetes.io/zone': 'us-east-1a'
+        },
+        persistent_volume_claims={
+            'training-cache': '/mnt/cache'
+        },
+        shared_memory=16384,
+        labels={'step': 'training', 'gpu': 'true'},
+        annotations={'nvidia.com/gpu-memory': '32GB'}
+    )
+    @step
+    def train(self):
+        # Train model with GPUs
+        self.model = train_model(
+            self.train_data,
+            version=self.model_version
+        )
+        self.next(self.evaluate)
+    
+    @kubernetes(
+        cpu=4,
+        memory=16384,
+        labels={'step': 'evaluation'}
+    )
+    @step
+    def evaluate(self):
+        # Evaluate model
+        self.metrics = evaluate_model(self.model)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print(f"Training complete. Accuracy: {self.metrics['accuracy']}")
+
+if __name__ == '__main__':
+    ProductionMLFlow()
+```
+
+## Quality of Service (QoS) Classes
+
+Kubernetes assigns QoS classes based on resource requests and limits:
+
+### Guaranteed QoS
+
+```python
+@kubernetes(
+    cpu=8,
+    memory=32000,
+    qos='Guaranteed'  # Sets requests = limits
+)
+@step
+def guaranteed_step(self):
+    # This pod gets highest priority and is never killed
+    # unless it exceeds its limits
+    pass
+```
+
+**Characteristics:**
+- CPU and memory limits are set equal to requests
+- Highest priority for scheduling
+- Last to be evicted under resource pressure
+- Best for critical, resource-intensive workloads
+
+### Burstable QoS (Default)
+
+```python
+@kubernetes(
+    cpu=4,
+    memory=16000,
+    qos='Burstable'  # Sets requests without limits (default)
+)
+@step
+def burstable_step(self):
+    # This pod can use more resources than requested
+    # if available on the node
+    pass
+```
+
+**Characteristics:**
+- CPU and memory requests set, but can burst above
+- Medium priority for scheduling
+- Can be throttled or evicted if resources are needed
+- Good for most workloads with variable resource usage
+
+## Multi-Node Configuration
+
+For distributed workloads using `@parallel`:
+
+```python
+from metaflow import kubernetes, parallel
+
+@kubernetes(
+    cpu=8,
+    memory=32000,
+    gpu=1,
+    port=29500,  # Port for inter-node communication
+    shared_memory=16384  # Required for distributed frameworks
+)
+@parallel(num_nodes=4)
+@step
+def distributed_step(self):
+    from metaflow import current
+    
+    # Access multi-node information
+    print(f"Node: {current.parallel.node_index}/{current.parallel.num_nodes}")
+    print(f"Main IP: {current.parallel.main_ip}")
+    
+    # Set up distributed training
+    setup_distributed(
+        rank=current.parallel.node_index,
+        world_size=current.parallel.num_nodes,
+        master_addr=current.parallel.main_ip,
+        master_port=29500
+    )
+    
+    self.next(self.end)
+```
+
+## Security Context Configuration
+
+Configure container security context:
+
+```python
+@kubernetes(
+    security_context={
+        'run_as_user': 1000,           # Run as non-root user
+        'run_as_group': 1000,          # Primary group
+        'run_as_non_root': True,       # Enforce non-root
+        'privileged': False,           # No privileged mode
+        'allow_privilege_escalation': False
+    }
+)
+@step
+def secure_step(self):
+    # Runs with restricted permissions
+    pass
+```
+
+## Troubleshooting Configuration Issues
+
+<AccordionGroup>
+  <Accordion title="Image Pull Errors">
+    **Symptoms**: Pods stuck in `ImagePullBackOff` or `ErrImagePull`
+    
+    **Solutions**:
+    1. Verify image name and registry:
+       ```bash
+       kubectl get events -n metaflow | grep -i pull
+       ```
+    
+    2. Check image pull secrets:
+       ```bash
+       kubectl get secrets -n metaflow
+       kubectl describe serviceaccount metaflow-sa -n metaflow
+       ```
+    
+    3. Test image pull manually:
+       ```bash
+       kubectl run test --image=myregistry.io/metaflow:latest --dry-run=client -o yaml
+       ```
+  </Accordion>
+  
+  <Accordion title="Resource Quota Exceeded">
+    **Symptoms**: Pods stuck in `Pending` with reason `Quota Exceeded`
+    
+    **Solutions**:
+    1. Check namespace quotas:
+       ```bash
+       kubectl describe quota -n metaflow
+       ```
+    
+    2. View current resource usage:
+       ```bash
+       kubectl top pods -n metaflow
+       kubectl top nodes
+       ```
+    
+    3. Request quota increase or reduce resource requests
+  </Accordion>
+  
+  <Accordion title="Scheduling Failures">
+    **Symptoms**: Pods stuck in `Pending` with reason `Unschedulable`
+    
+    **Solutions**:
+    1. Check node selector and tolerations:
+       ```bash
+       kubectl describe pod <pod-name> -n metaflow
+       ```
+    
+    2. Verify node availability:
+       ```bash
+       kubectl get nodes -l node.kubernetes.io/instance-type=m5.xlarge
+       ```
+    
+    3. Check taints:
+       ```bash
+       kubectl describe nodes | grep -A5 Taints
+       ```
+  </Accordion>
+  
+  <Accordion title="PVC Mount Failures">
+    **Symptoms**: Pods stuck in `ContainerCreating` with volume mount errors
+    
+    **Solutions**:
+    1. Verify PVC exists and is bound:
+       ```bash
+       kubectl get pvc -n metaflow
+       kubectl describe pvc <pvc-name> -n metaflow
+       ```
+    
+    2. Check storage class:
+       ```bash
+       kubectl get storageclass
+       ```
+    
+    3. Ensure PVC access mode is compatible:
+       ```bash
+       kubectl get pvc <pvc-name> -n metaflow -o yaml | grep accessModes
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Configuration Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Environment Separation" icon="layer-group">
+    Use different namespaces and configurations for dev, staging, and production:
+    ```bash
+    # dev.env
+    export METAFLOW_KUBERNETES_NAMESPACE=metaflow-dev
+    
+    # prod.env
+    export METAFLOW_KUBERNETES_NAMESPACE=metaflow-prod
+    ```
+  </Card>
+  
+  <Card title="Resource Defaults" icon="gauge">
+    Set conservative defaults in environment variables and override in decorators as needed for specific steps.
+  </Card>
+  
+  <Card title="Security First" icon="shield">
+    Always configure security context, use secrets for sensitive data, and follow the principle of least privilege.
+  </Card>
+  
+  <Card title="Labels and Annotations" icon="tags">
+    Use consistent labeling for cost tracking, monitoring, and organization:
+    ```bash
+    export METAFLOW_KUBERNETES_LABELS="team=ml,project=fraud-detection,environment=prod"
+    ```
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes Overview" icon="dharmachakra" href="/orchestrators/kubernetes/overview">
+    Learn about Kubernetes execution concepts
+  </Card>
+  <Card title="Argo Workflows" icon="diagram-project" href="/orchestrators/kubernetes/argo-workflows">
+    Deploy production workflows with Argo
+  </Card>
+  <Card title="Resource Management" icon="microchip" href="/scaling/resources-management">
+    Optimize resource allocation
+  </Card>
+  <Card title="Secrets Management" icon="key" href="/advanced/secrets-management">
+    Secure sensitive data
+  </Card>
+</CardGroup>

@@ -1,0 +1,298 @@
+---
+title: 'IncludeFile'
+description: 'Include local files as flow parameters'
+---
+
+`IncludeFile` is a special parameter type that allows you to include local file contents as a parameter for your flow. The file is automatically uploaded to cloud storage and made available as a read-only artifact in all steps.
+
+## Overview
+
+Unlike regular parameters that take values from the command line, `IncludeFile` takes a file path and automatically reads and uploads the file contents. This is useful for:
+
+- Configuration files (JSON, YAML, etc.)
+- Small datasets
+- Model files
+- Any static file needed by your flow
+
+The file is stored as an artifact, versioned with your run, and available throughout the flow's execution.
+
+## Usage
+
+```python
+from metaflow import FlowSpec, IncludeFile, step
+
+class ConfigFlow(FlowSpec):
+    config = IncludeFile(
+        'config',
+        default='config.json',
+        help='Configuration file'
+    )
+    
+    @step
+    def start(self):
+        print(f"Config contents: {self.config}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Config is available in all steps
+        print(f"Config is still available: {len(self.config)} bytes")
+```
+
+Run the flow:
+
+```bash
+python flow.py run --config path/to/config.json
+```
+
+## Constructor
+
+```python
+IncludeFile(
+    name: str,
+    required: Optional[bool] = None,
+    is_text: Optional[bool] = None,
+    encoding: Optional[str] = None,
+    help: Optional[str] = None,
+    parser: Optional[Union[str, Callable[[str], Any]]] = None,
+    **kwargs
+)
+```
+
+### Parameters
+
+<ParamField path="name" type="str" required>
+  User-visible parameter name.
+</ParamField>
+
+<ParamField path="default" type="str | Callable" optional>
+  Default path to a local file. Can be a string path or a function for deploy-time parameters.
+</ParamField>
+
+<ParamField path="required" type="bool" optional default="False">
+  If True, user must specify a value. When True, the `default` is ignored.
+</ParamField>
+
+<ParamField path="is_text" type="bool" optional default="True">
+  If True, convert file contents to a string using the provided encoding. If False, store as bytes.
+</ParamField>
+
+<ParamField path="encoding" type="str" optional default="utf-8">
+  Character encoding to use when `is_text=True`.
+</ParamField>
+
+<ParamField path="help" type="str" optional>
+  Help text displayed in `run --help`.
+</ParamField>
+
+<ParamField path="show_default" type="bool" optional default="True">
+  If True, show the default value in help text.
+</ParamField>
+
+<ParamField path="parser" type="str | Callable" optional>
+  Function to parse file contents. Can be a callable or a string reference to a function (e.g., `"json.loads"` or `"my_module.parser_func"`). Names starting with "." are relative to the metaflow package.
+</ParamField>
+
+## File Processing
+
+### Text vs Binary
+
+By default, `IncludeFile` treats files as text and decodes them using UTF-8:
+
+```python
+# Text file (default)
+config = IncludeFile('config', default='config.txt')
+# Access as string
+print(self.config)  # "file contents as string"
+
+# Binary file
+model = IncludeFile('model', is_text=False, default='model.bin')
+# Access as bytes
+print(type(self.model))  # <class 'bytes'>
+```
+
+### Custom Encoding
+
+Specify a different character encoding:
+
+```python
+config = IncludeFile(
+    'config',
+    encoding='latin-1',
+    default='legacy_config.txt'
+)
+```
+
+### Parsing File Contents
+
+Use the `parser` parameter to automatically parse file contents:
+
+```python
+import json
+import yaml
+
+class MyFlow(FlowSpec):
+    # Parse JSON automatically
+    json_config = IncludeFile(
+        'json_config',
+        parser=json.loads,
+        default='config.json'
+    )
+    
+    # Parse YAML automatically
+    yaml_config = IncludeFile(
+        'yaml_config',
+        parser=yaml.safe_load,
+        default='config.yaml'
+    )
+    
+    @step
+    def start(self):
+        # Already parsed as dict
+        print(self.json_config['key'])
+        print(self.yaml_config['key'])
+        self.next(self.end)
+```
+
+You can also reference a parser function by name:
+
+```python
+json_config = IncludeFile(
+    'config',
+    parser='json.loads',
+    default='config.json'
+)
+```
+
+## Examples
+
+### Configuration File
+
+```python
+import json
+from metaflow import FlowSpec, IncludeFile, step
+
+class ConfigurableFlow(FlowSpec):
+    config = IncludeFile(
+        'config',
+        help='JSON configuration file',
+        parser=json.loads,
+        default='default_config.json'
+    )
+    
+    @step
+    def start(self):
+        print(f"Using config: {self.config}")
+        self.model_name = self.config['model']
+        self.batch_size = self.config['batch_size']
+        self.next(self.train)
+    
+    @step
+    def train(self):
+        print(f"Training {self.model_name} with batch_size={self.batch_size}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Multiple File Types
+
+```python
+from metaflow import FlowSpec, IncludeFile, step
+import pickle
+
+class MultiFileFlow(FlowSpec):
+    # Text file with custom encoding
+    readme = IncludeFile(
+        'readme',
+        default='README.txt',
+        encoding='utf-8'
+    )
+    
+    # Binary model file
+    model = IncludeFile(
+        'model',
+        is_text=False,
+        default='model.pkl'
+    )
+    
+    # CSV data with custom parser
+    data = IncludeFile(
+        'data',
+        parser=lambda content: [line.split(',') for line in content.splitlines()],
+        default='data.csv'
+    )
+    
+    @step
+    def start(self):
+        print(f"README: {self.readme}")
+        model_obj = pickle.loads(self.model)
+        print(f"Loaded model: {model_obj}")
+        print(f"Data rows: {len(self.data)}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Deploy-Time Parameters
+
+For deployed workflows (like AWS Step Functions), use a callable default:
+
+```python
+class ProductionFlow(FlowSpec):
+    config = IncludeFile(
+        'config',
+        default=lambda ctx: f'/etc/configs/{ctx.flow_name}.json',
+        parser='json.loads'
+    )
+    
+    @step
+    def start(self):
+        # Config is loaded from the deploy-time path
+        print(self.config)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Under the Hood
+
+When you use `IncludeFile`:
+
+1. The file is read from the local filesystem
+2. Contents are compressed with gzip
+3. The file is uploaded to the datastore (S3, Azure, etc.)
+4. A descriptor is stored as the parameter value
+5. In each step, the file is downloaded and decompressed automatically
+
+The file is stored once per flow and shared across all tasks, making it efficient for distributed execution.
+
+## Size Considerations
+
+`IncludeFile` is designed for relatively small files (up to a few hundred MB). For large datasets:
+
+- Use the [S3 client](/api/data/s3) to download data in specific steps
+- Store data externally and download it as needed
+- Consider splitting large files into smaller chunks
+
+## Comparison with Regular Parameters
+
+| Feature | Parameter | IncludeFile |
+|---------|-----------|-------------|
+| Input | Command-line value | File path |
+| Storage | String/number | File contents |
+| Size | Small values | Small to medium files |
+| Access | Direct value | File contents as string/bytes |
+| Versioning | By value | By content hash |
+
+## Related
+
+- [Parameter](/api/client/parameter) - Regular command-line parameters
+- [S3](/api/data/s3) - Direct S3 access for larger files
+- [Datastore](/api/data/datastore) - Artifact storage system

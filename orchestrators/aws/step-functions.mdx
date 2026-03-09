@@ -1,0 +1,415 @@
+---
+title: "AWS Step Functions"
+description: "Deploy and orchestrate Metaflow workflows with AWS Step Functions"
+---
+
+## Overview
+
+AWS Step Functions is a serverless orchestrator that allows you to deploy Metaflow workflows to production. Once deployed, your workflows run automatically on a schedule or can be triggered on-demand, with each step executing on AWS Batch compute resources.
+
+<Note>
+AWS Step Functions requires AWS Batch to execute tasks. Make sure you have [AWS Batch configured](/orchestrators/aws/batch) before deploying workflows.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Serverless Orchestration" icon="cloud">
+    No infrastructure to manage - AWS Step Functions handles workflow coordination automatically
+  </Card>
+  <Card title="Visual Monitoring" icon="chart-line">
+    Track workflow execution through the AWS Console with detailed state machine visualizations
+  </Card>
+  <Card title="Production Tokens" icon="key">
+    Secure deployment model using production tokens for authorization and namespace isolation
+  </Card>
+  <Card title="Event-Driven" icon="bolt">
+    Schedule workflows with cron expressions or trigger them programmatically
+  </Card>
+</CardGroup>
+
+## Deploying to Step Functions
+
+### Basic Deployment
+
+Deploy your flow to AWS Step Functions using the `step-functions create` command:
+
+```bash
+python myflow.py step-functions create
+```
+
+This command:
+1. Compiles your flow into an AWS Step Functions state machine
+2. Uploads your code package to S3
+3. Creates AWS Batch job definitions for each step
+4. Deploys the state machine to your AWS account
+5. Generates a production token for authorization
+
+### Production Tokens
+
+The first time you deploy a flow, Metaflow generates a production token:
+
+```
+A new production token generated.
+
+The namespace of this production flow is
+    production:<token>
+```
+
+This token:
+- Creates a unique namespace for your production flow
+- Authorizes future deployments and modifications
+- Allows team members to collaborate on the same deployment
+
+<Tip>
+Share the production token with team members who need to update the deployment:
+```bash
+python myflow.py step-functions create --authorize <token>
+```
+</Tip>
+
+### Deployment Options
+
+#### Scheduling Workflows
+
+Schedule your workflow using the `@schedule` decorator:
+
+```python
+from metaflow import FlowSpec, step, schedule
+
+@schedule(cron='0 10 * * *')  # Run daily at 10 AM UTC
+class DailyProcessingFlow(FlowSpec):
+    @step
+    def start(self):
+        print("Starting daily processing")
+        self.next(self.process)
+    
+    @step
+    def process(self):
+        # Your processing logic
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        print("Processing complete")
+```
+
+<Warning>
+Step Functions does not support timezone-aware scheduling. All cron expressions use UTC.
+</Warning>
+
+#### Workflow Timeout
+
+Set a maximum execution time for your workflow:
+
+```bash
+python myflow.py step-functions create --workflow-timeout 86400  # 24 hours
+```
+
+#### Maximum Concurrency
+
+Limit parallel execution for foreach steps:
+
+```bash
+python myflow.py step-functions create --max-workers 100
+```
+
+#### Execution History Logging
+
+Enable CloudWatch logging for detailed execution history:
+
+```bash
+python myflow.py step-functions create --log-execution-history
+```
+
+<Note>
+This requires the `METAFLOW_SFN_EXECUTION_LOG_GROUP_ARN` environment variable to be set.
+</Note>
+
+#### Distributed Map
+
+For large-scale foreach operations, use distributed map:
+
+```bash
+python myflow.py step-functions create --use-distributed-map
+```
+
+This leverages AWS Step Functions Distributed Map for processing up to 10,000 parallel items.
+
+## Triggering Executions
+
+### Manual Trigger
+
+Trigger a deployed workflow manually:
+
+```bash
+python myflow.py step-functions trigger
+```
+
+### Trigger with Parameters
+
+Pass parameters to your flow execution:
+
+```bash
+python myflow.py step-functions trigger --alpha 1.0 --model_type "transformer"
+```
+
+Example flow with parameters:
+
+```python
+from metaflow import FlowSpec, step, Parameter
+
+class ParameterizedFlow(FlowSpec):
+    learning_rate = Parameter('learning_rate', default=0.01)
+    epochs = Parameter('epochs', default=10)
+    
+    @step
+    def start(self):
+        print(f"Training with lr={self.learning_rate}, epochs={self.epochs}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Managing Deployments
+
+### List Executions
+
+View all executions of your deployed workflow:
+
+```bash
+# List all executions
+python myflow.py step-functions list-runs
+
+# Filter by status
+python myflow.py step-functions list-runs --running
+python myflow.py step-functions list-runs --succeeded
+python myflow.py step-functions list-runs --failed
+```
+
+### Terminate Execution
+
+Stop a running execution:
+
+```bash
+python myflow.py step-functions terminate <run-id>
+```
+
+Example:
+```bash
+python myflow.py step-functions terminate sfn-a1b2c3d4
+```
+
+### Delete Deployment
+
+Remove a workflow deployment from Step Functions:
+
+```bash
+python myflow.py step-functions delete --authorize <token>
+```
+
+<Warning>
+Deleting a deployment does not stop running executions. Terminate them manually if needed.
+</Warning>
+
+## Advanced Features
+
+### State Machine Compression
+
+For flows with long command strings, compress the state machine definition:
+
+```bash
+python myflow.py step-functions create --compress-state-machine
+```
+
+This uploads commands to S3 and references them in the state machine, helping stay within AWS Step Functions' 8KB state size limit.
+
+### Custom State Machine Name
+
+Use a custom name for your state machine:
+
+```bash
+python myflow.py step-functions --name my-custom-flow create
+```
+
+### Projects and Branches
+
+For projects, use branches instead of custom names:
+
+```python
+from metaflow import FlowSpec, step, project
+
+@project(name='recommendation_engine')
+class RecommendationFlow(FlowSpec):
+    @step
+    def start(self):
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+Deploy different branches:
+```bash
+# Production branch
+python myflow.py --branch prod step-functions create
+
+# Staging branch
+python myflow.py --branch staging step-functions create
+```
+
+## Viewing State Machine JSON
+
+Inspect the generated state machine definition:
+
+```bash
+python myflow.py step-functions create --only-json
+```
+
+This outputs the AWS Step Functions state machine JSON without deploying.
+
+## Configuration
+
+Step Functions requires these environment variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `METAFLOW_SFN_IAM_ROLE` | IAM role ARN for Step Functions | Yes |
+| `METAFLOW_EVENTS_SFN_ACCESS_IAM_ROLE` | IAM role ARN for EventBridge | For schedules |
+| `METAFLOW_SFN_DYNAMO_DB_TABLE` | DynamoDB table for foreach coordination | For foreach |
+| `METAFLOW_SFN_EXECUTION_LOG_GROUP_ARN` | CloudWatch log group ARN | For logging |
+| `METAFLOW_SFN_S3_DISTRIBUTED_MAP_OUTPUT_PATH` | S3 path for distributed map outputs | For distributed map |
+| `METAFLOW_SFN_STATE_MACHINE_PREFIX` | Prefix for state machine names | Optional |
+
+See [AWS Configuration](/orchestrators/aws/configuration) for detailed setup instructions.
+
+## Limitations
+
+<Warning>
+The following Metaflow features are not currently supported on AWS Step Functions:
+
+- `@parallel` decorator
+- `@trigger` and `@trigger_on_finish` decorators  
+- `@exit_hook` decorator
+- Switch statements (conditional branching)
+
+Use alternative orchestrators like [Argo Workflows](/orchestrators/argo) if you need these features.
+</Warning>
+
+## Monitoring and Debugging
+
+### AWS Console
+
+Monitor your workflows in the AWS Step Functions console:
+1. Navigate to AWS Step Functions in your AWS Console
+2. Find your state machine (named after your flow)
+3. View execution history and state transitions
+4. Inspect input/output for each step
+
+### Metaflow Client API
+
+Access execution data programmatically:
+
+```python
+from metaflow import Flow, namespace
+
+# Switch to production namespace
+namespace('production:<token>')
+
+# Get the latest run
+run = Flow('MyFlow').latest_run
+
+# Inspect steps
+for step in run:
+    print(f"Step: {step.id}")
+    for task in step:
+        print(f"  Task: {task.id}, Status: {task.finished}")
+```
+
+### CloudWatch Logs
+
+If execution history logging is enabled, view detailed logs in CloudWatch:
+1. Navigate to CloudWatch Logs in AWS Console
+2. Find your log group (specified in `METAFLOW_SFN_EXECUTION_LOG_GROUP_ARN`)
+3. Filter by execution ARN or state machine name
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use S3 datastore" icon="database">
+    Always deploy with `--datastore=s3` (default). Step Functions requires S3 for data persistence.
+  </Accordion>
+  
+  <Accordion title="Set appropriate timeouts" icon="clock">
+    Configure timeouts at both the workflow level (`--workflow-timeout`) and step level (`@timeout` decorator) to prevent runaway executions.
+  </Accordion>
+  
+  <Accordion title="Monitor execution costs" icon="dollar-sign">
+    AWS Step Functions charges per state transition. Optimize your flow structure to minimize unnecessary states.
+  </Accordion>
+  
+  <Accordion title="Test locally first" icon="flask">
+    Always test your flow locally with `python myflow.py run` before deploying to Step Functions.
+  </Accordion>
+  
+  <Accordion title="Use tags for organization" icon="tags">
+    Tag your runs for better organization:
+    ```bash
+    python myflow.py step-functions create --tag project:ml --tag env:prod
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### State Machine Creation Fails
+
+**Error**: "No IAM role found for AWS Step Functions"
+
+**Solution**: Set the `METAFLOW_SFN_IAM_ROLE` environment variable. See [configuration docs](/orchestrators/aws/configuration).
+
+### Foreach Steps Fail
+
+**Error**: "An AWS DynamoDB table is needed to support foreach"
+
+**Solution**: Create a DynamoDB table and set `METAFLOW_SFN_DYNAMO_DB_TABLE`.
+
+### State Machine Too Large
+
+**Error**: State machine definition exceeds size limit
+
+**Solution**: Use `--compress-state-machine` to offload commands to S3.
+
+### Parameter Size Limit
+
+**Error**: "Length of parameter names and values shouldn't exceed 20480"
+
+**Solution**: Pass large data through the datastore instead of parameters:
+```python
+@step
+def start(self):
+    # Store large data in datastore
+    with open('data.json', 'w') as f:
+        json.dump(large_data, f)
+    self.next(self.process)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AWS Batch" icon="server" href="/orchestrators/aws/batch">
+    Configure AWS Batch for task execution
+  </Card>
+  <Card title="AWS Configuration" icon="gear" href="/orchestrators/aws/configuration">
+    Complete AWS setup and IAM configuration
+  </Card>
+  <Card title="Scheduling" icon="calendar" href="/production/scheduling">
+    Learn more about scheduling workflows
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/production/monitoring">
+    Monitor production workflows
+  </Card>
+</CardGroup>

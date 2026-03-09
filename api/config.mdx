@@ -1,0 +1,324 @@
+---
+title: Config
+---
+
+# Config
+
+Includes a configuration for this flow.
+
+## Usage
+
+```python
+from metaflow import FlowSpec, Config, step
+
+class MyFlow(FlowSpec):
+    config = Config('config',
+                    default='config.json')
+    
+    @step
+    def start(self):
+        print(f"Database host: {self.config.database.host}")
+        print(f"Database port: {self.config.database.port}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Description
+
+`Config` is a special type of `Parameter` but differs in a few key areas:
+- It is immutable and determined at deploy time (or prior to running if not deploying to a scheduler)
+- As such, it can be used anywhere in your code including in Metaflow decorators
+
+The value of the configuration is determined as follows:
+1. Use the user-provided file path or value. It is an error to provide both.
+2. If none are present:
+   - If a default file path (`default`) is provided, attempt to read this file
+     - If the file is present, use that value. Note that the file will be used even if it has an invalid syntax
+     - If the file is not present, and a default value is present, use that
+3. If still None and is required, this is an error.
+
+## Constructor
+
+```python
+Config(
+    name: str,
+    default: Optional[Union[str, Callable[[ParameterContext], str]]] = None,
+    default_value: Optional[Union[str, Dict[str, Any], Callable]] = None,
+    help: Optional[str] = None,
+    required: Optional[bool] = None,
+    parser: Optional[Union[str, Callable[[str], Dict[Any, Any]]]] = None,
+    plain: bool = False,
+    **kwargs: Dict[str, str]
+)
+```
+
+<ParamField path="name" type="str" required>
+  User-visible configuration name.
+</ParamField>
+
+<ParamField path="default" type="str | Callable[[ParameterContext], str]" default="None">
+  Default path from where to read this configuration. A function implies that the
+  value will be computed using that function.
+  You can only specify `default` or `default_value`, not both.
+</ParamField>
+
+<ParamField path="default_value" type="str | Dict[str, Any] | Callable" default="None">
+  Default value for the parameter. A function implies that the value will be computed
+  using that function.
+  You can only specify `default` or `default_value`, not both.
+</ParamField>
+
+<ParamField path="help" type="str" default="None">
+  Help text to show in `run --help`.
+</ParamField>
+
+<ParamField path="required" type="bool" default="None">
+  Require that the user specifies a value for the configuration. Note that if
+  a default or default_value is provided, the required flag is ignored.
+  A value of None is equivalent to False.
+</ParamField>
+
+<ParamField path="parser" type="str | Callable[[str], Dict[Any, Any]]" default="None">
+  If a callable, it is a function that can parse the configuration string
+  into an arbitrarily nested dictionary. If a string, the string should refer to
+  a function (like "my_parser_package.my_parser.my_parser_function") which should
+  be able to parse the configuration string into an arbitrarily nested dictionary.
+  If the name starts with a ".", it is assumed to be relative to "metaflow".
+</ParamField>
+
+<ParamField path="plain" type="bool" default="False">
+  If True, the configuration value is just returned as is and not converted to
+  a ConfigValue. Use this if you just want to directly access your configuration.
+  Note that modifications are not persisted across steps (i.e., ConfigValue prevents
+  modifications and raises an error -- if you have your own object, no error
+  is raised but no modifications are persisted). You can also use this to return
+  any arbitrary object (not just dictionary-like objects).
+</ParamField>
+
+## ConfigValue
+
+When you access a `Config` parameter (unless `plain=True`), you get a `ConfigValue` object. This is a thin wrapper around an arbitrarily nested dictionary-like configuration object.
+
+### Accessing values
+
+You can access elements using either dot notation or bracket notation:
+
+```python
+# Given config = {"foo": {"bar": 42}}
+value = self.config.foo.bar  # Using dot notation
+value = self.config["foo"]["bar"]  # Using bracket notation
+```
+
+### Properties
+
+- **Immutable**: ConfigValue objects cannot be modified
+- **Nested access**: Supports arbitrary nesting levels
+- **Python identifiers**: All keys must be valid Python identifiers
+
+## Examples
+
+### Basic configuration file
+
+Create a file `config.json`:
+```json
+{
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "mydb"
+  },
+  "features": ["feature_a", "feature_b"],
+  "debug": false
+}
+```
+
+Use it in your flow:
+```python
+from metaflow import FlowSpec, Config, step
+
+class MyFlow(FlowSpec):
+    config = Config('config', default='config.json')
+    
+    @step
+    def start(self):
+        print(f"Connecting to {self.config.database.host}:{self.config.database.port}")
+        print(f"Database: {self.config.database.name}")
+        print(f"Features: {self.config.features}")
+        print(f"Debug mode: {self.config.debug}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Using config in decorators
+
+Configs can be used in decorators because they are evaluated at deploy/start time:
+
+```python
+from metaflow import FlowSpec, Config, step, environment
+
+class MyFlow(FlowSpec):
+    config = Config('config', default='config.json')
+    
+    @environment(vars={"API_KEY": config.api_key})
+    @step
+    def start(self):
+        import os
+        print(f"API Key set: {bool(os.environ.get('API_KEY'))}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Using config_expr for complex expressions
+
+```python
+from metaflow import FlowSpec, Config, config_expr, step, project
+
+@project(name=config_expr("config.project.name"))
+class MyFlow(FlowSpec):
+    config = Config('config', default='config.json')
+    
+    @step
+    def start(self):
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Custom parser
+
+Use a custom parser for non-JSON formats:
+
+```python
+from metaflow import FlowSpec, Config, step
+import yaml
+
+def yaml_parser(config_str):
+    return yaml.safe_load(config_str)
+
+class MyFlow(FlowSpec):
+    config = Config('config',
+                    default='config.yaml',
+                    parser=yaml_parser)
+    
+    @step
+    def start(self):
+        print(f"Config: {self.config}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Plain config
+
+If you want to use your own configuration object:
+
+```python
+from metaflow import FlowSpec, Config, step
+
+class MyConfigClass:
+    def __init__(self, data):
+        self.data = data
+    
+    def get_value(self):
+        return self.data['key']
+
+def custom_parser(config_str):
+    import json
+    return MyConfigClass(json.loads(config_str))
+
+class MyFlow(FlowSpec):
+    config = Config('config',
+                    default='config.json',
+                    parser=custom_parser,
+                    plain=True)
+    
+    @step
+    def start(self):
+        print(f"Value: {self.config.get_value()}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Default value
+
+Provide a default value instead of a file path:
+
+```python
+from metaflow import FlowSpec, Config, step
+
+class MyFlow(FlowSpec):
+    config = Config('config',
+                    default_value={
+                        "timeout": 30,
+                        "retries": 3
+                    })
+    
+    @step
+    def start(self):
+        print(f"Timeout: {self.config.timeout}")
+        print(f"Retries: {self.config.retries}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Overriding config at runtime
+
+```bash
+# Use a different config file
+python myflow.py run --config=production-config.json
+
+# Provide config as a string (JSON)
+python myflow.py run --config='{"timeout": 60}'
+```
+
+## Related Functions
+
+### config_expr
+
+```python
+def config_expr(expr: str) -> DelayEvaluator
+```
+
+Function to allow you to use an expression involving a config parameter in places where it may not be directly accessible or if you want a more complicated expression than just a single variable.
+
+You can use it as follows:
+- When the config is not directly accessible:
+  ```python
+  @project(name=config_expr("config").project.name)
+  class MyFlow(FlowSpec):
+      config = Config("config")
+      ...
+  ```
+- When you want a more complex expression:
+  ```python
+  class MyFlow(FlowSpec):
+      config = Config("config")
+
+      @environment(vars={"foo": config_expr("config.bar.baz.lower()")})
+      @step
+      def start(self):
+          ...
+  ```
+
+<ParamField path="expr" type="str" required>
+  Expression using the config values.
+</ParamField>

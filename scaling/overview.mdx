@@ -1,0 +1,196 @@
+---
+title: "Scaling & Compute Overview"
+description: "Learn how Metaflow scales your workflows from laptops to cloud compute"
+icon: "rocket"
+---
+
+Metaflow makes it easy to scale your data science workflows from local development to production-grade compute infrastructure. You can develop and test locally, then seamlessly execute the same code on powerful cloud resources.
+
+## Why Scale?
+
+Data science workflows often need more resources than a laptop can provide:
+
+- **Large datasets** that don't fit in local memory
+- **Compute-intensive operations** like training ML models
+- **Parallel processing** across multiple machines
+- **GPU acceleration** for deep learning
+- **Long-running jobs** that need dedicated infrastructure
+
+## Scaling Approaches
+
+Metaflow provides multiple ways to scale your workflows:
+
+<CardGroup cols={2}>
+  <Card title="Remote Execution" icon="server" href="/scaling/remote-execution">
+    Run individual steps on cloud compute while keeping control local
+  </Card>
+  
+  <Card title="AWS Batch" icon="aws" href="/scaling/batch-computing">
+    Execute steps on AWS Batch for scalable, managed compute
+  </Card>
+  
+  <Card title="Kubernetes" icon="dharmachakra" href="/scaling/kubernetes">
+    Run steps on Kubernetes clusters for container-based orchestration
+  </Card>
+  
+  <Card title="Distributed Computing" icon="network-wired" href="/scaling/distributed-computing">
+    Coordinate multi-node jobs for parallel and distributed workloads
+  </Card>
+</CardGroup>
+
+## Key Concepts
+
+### Decorators for Compute
+
+Metaflow uses Python decorators to specify compute requirements:
+
+```python
+from metaflow import FlowSpec, step, batch, resources
+
+class MyFlow(FlowSpec):
+    @batch
+    @resources(cpu=4, memory=16000)
+    @step
+    def train(self):
+        # This step runs on AWS Batch with 4 CPUs and 16GB RAM
+        pass
+```
+
+### Portable Resource Specs
+
+The `@resources` decorator lets you specify requirements independently of the compute platform:
+
+```python
+@resources(cpu=2, memory=8000, gpu=1)
+@step
+def process(self):
+    pass
+```
+
+Then choose the platform at runtime:
+
+```bash
+# Run on AWS Batch
+python myflow.py run --with batch
+
+# Run on Kubernetes
+python myflow.py run --with kubernetes
+```
+
+### Hybrid Execution
+
+You can mix local and remote execution in the same flow:
+
+```python
+class HybridFlow(FlowSpec):
+    @step
+    def start(self):
+        # Runs locally
+        self.data = load_data()
+        self.next(self.process)
+    
+    @batch
+    @resources(cpu=16, memory=64000)
+    @step
+    def process(self):
+        # Runs on AWS Batch
+        self.results = expensive_computation(self.data)
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        # Runs locally
+        save_results(self.results)
+```
+
+## Platform Support
+
+| Feature | AWS Batch | Kubernetes | Local |
+|---------|-----------|------------|-------|
+| CPU control | ✓ | ✓ | ✗ |
+| Memory control | ✓ | ✓ | ✗ |
+| GPU support | ✓ | ✓ | ✗ |
+| Disk size | Limited | ✓ | ✗ |
+| Multi-node | ✓ | ✓ | ✓ |
+| Auto-scaling | ✓ | ✓ | ✗ |
+
+## Getting Started
+
+<Steps>
+  <Step title="Define resource requirements">
+    Add `@resources` decorators to steps that need more compute:
+    
+    ```python
+    @resources(cpu=4, memory=16000)
+    @step
+    def heavy_step(self):
+        pass
+    ```
+  </Step>
+  
+  <Step title="Choose a compute platform">
+    Add `@batch` or `@kubernetes` to execute on cloud infrastructure:
+    
+    ```python
+    @batch
+    @resources(cpu=4, memory=16000)
+    @step
+    def heavy_step(self):
+        pass
+    ```
+  </Step>
+  
+  <Step title="Configure your environment">
+    Set up AWS credentials or Kubernetes access. See platform-specific guides:
+    - [AWS Batch setup](/scaling/batch-computing)
+    - [Kubernetes setup](/scaling/kubernetes)
+  </Step>
+  
+  <Step title="Run your flow">
+    Execute your flow - decorated steps will run on the specified platform:
+    
+    ```bash
+    python myflow.py run
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start small and scale up">
+    Develop and test locally first. Add compute decorators only to steps that need them. This keeps development fast and costs low.
+  </Accordion>
+  
+  <Accordion title="Use @resources for portability">
+    Specify requirements with `@resources` instead of platform-specific parameters. This makes it easy to switch between AWS Batch and Kubernetes.
+  </Accordion>
+  
+  <Accordion title="Right-size your resources">
+    Monitor actual usage and adjust CPU, memory, and GPU allocations. Over-provisioning wastes money; under-provisioning causes failures.
+  </Accordion>
+  
+  <Accordion title="Leverage data locality">
+    Keep data close to compute. Use S3 with AWS Batch, appropriate storage with Kubernetes. Metaflow handles data movement automatically.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Remote Execution" icon="server" href="/scaling/remote-execution">
+    Learn about running steps remotely
+  </Card>
+  
+  <Card title="Resources Decorator" icon="sliders" href="/scaling/resources-management">
+    Deep dive into @resources options
+  </Card>
+  
+  <Card title="AWS Batch" icon="aws" href="/scaling/batch-computing">
+    Set up AWS Batch integration
+  </Card>
+  
+  <Card title="Kubernetes" icon="dharmachakra" href="/scaling/kubernetes">
+    Configure Kubernetes execution
+  </Card>
+</CardGroup>
