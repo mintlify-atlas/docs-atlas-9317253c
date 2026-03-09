@@ -138,7 +138,9 @@
               "api/decorators/catch",
               "api/decorators/card",
               "api/decorators/environment",
-              "api/decorators/project"
+              "api/decorators/project",
+              "api/decorators/schedule",
+              "api/decorators/trigger"
             ]
           },
           {

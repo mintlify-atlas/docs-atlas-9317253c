@@ -1,0 +1,297 @@
+---
+title: "@schedule"
+description: "Schedule flows to run automatically on production orchestrators"
+icon: "clock"
+---
+
+## Overview
+
+The `@schedule` decorator specifies when a flow should run automatically when deployed to a production orchestrator (AWS Step Functions or Argo Workflows).
+
+<Note>
+This is a flow-level decorator and must be placed above the `FlowSpec` class definition.
+</Note>
+
+## Basic Usage
+
+```python
+from metaflow import FlowSpec, step, schedule
+
+@schedule(daily=True)
+class DailyReportFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        print("Generating daily report...")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Parameters
+
+<ParamField path="hourly" type="bool" default="False">
+  Run the workflow every hour
+</ParamField>
+
+<ParamField path="daily" type="bool" default="True">
+  Run the workflow every day at midnight UTC
+</ParamField>
+
+<ParamField path="weekly" type="bool" default="False">
+  Run the workflow every Sunday at midnight UTC
+</ParamField>
+
+<ParamField path="cron" type="str" optional>
+  Custom cron expression for AWS EventBridge or Argo Workflows schedule.
+  
+  For AWS Step Functions, uses [EventBridge cron format](https://docs.aws.amazon.com/eventbridge/latest/userguide/scheduled-events.html#cron-expressions).
+  
+  For Argo Workflows, uses standard cron format.
+</ParamField>
+
+<ParamField path="timezone" type="str" optional>
+  Timezone for the schedule in [IANA format](https://nodatime.org/TimeZones) (e.g., `America/Los_Angeles`).
+  
+  <Warning>
+  Currently only supported for Argo Workflows. AWS Step Functions schedules run in UTC.
+  </Warning>
+</ParamField>
+
+## Predefined Schedules
+
+### Hourly
+
+```python
+@schedule(hourly=True)
+class HourlyETL(FlowSpec):
+    pass
+```
+
+Runs every hour: `0 * * * ? *`
+
+### Daily
+
+```python
+@schedule(daily=True)  # This is the default
+class DailyProcessing(FlowSpec):
+    pass
+```
+
+Runs every day at midnight UTC: `0 0 * * ? *`
+
+### Weekly
+
+```python
+@schedule(weekly=True)
+class WeeklyReport(FlowSpec):
+    pass
+```
+
+Runs every Sunday at midnight UTC: `0 0 ? * SUN *`
+
+## Custom Cron Expressions
+
+### AWS Step Functions Cron
+
+AWS EventBridge uses a 6-field cron expression:
+
+```python
+@schedule(cron='0 9 * * ? *')  # Every day at 9 AM UTC
+class MorningReport(FlowSpec):
+    pass
+```
+
+Format: `minute hour day-of-month month day-of-week year`
+
+Examples:
+- `0 9 * * ? *` - Every day at 9 AM UTC
+- `0 12 ? * MON-FRI *` - Weekdays at noon UTC
+- `0 0 1 * ? *` - First day of every month at midnight UTC
+- `0/15 * * * ? *` - Every 15 minutes
+
+### Argo Workflows Cron with Timezone
+
+Argo supports standard 5-field cron with timezone:
+
+```python
+@schedule(
+    cron='0 9 * * *',  # 9 AM in specified timezone
+    timezone='America/Los_Angeles'
+)
+class TimezoneAwareFlow(FlowSpec):
+    pass
+```
+
+Format: `minute hour day month day-of-week`
+
+Examples:
+- `0 9 * * *` - Every day at 9 AM
+- `0 12 * * 1-5` - Weekdays at noon
+- `0 0 1 * *` - First day of every month
+- `*/15 * * * *` - Every 15 minutes
+
+## Deployment
+
+### Deploy to AWS Step Functions
+
+```bash
+# Deploy with schedule
+python flow.py step-functions create
+
+# The schedule is automatically configured
+```
+
+### Deploy to Argo Workflows
+
+```bash
+# Deploy with schedule
+python flow.py argo-workflows create
+
+# The CronWorkflow is automatically created
+```
+
+## Examples
+
+### Business Hours Report
+
+```python
+from metaflow import FlowSpec, step, schedule
+
+@schedule(cron='0 9,12,15,18 ? * MON-FRI *')  # 9 AM, noon, 3 PM, 6 PM on weekdays
+class BusinessHoursReport(FlowSpec):
+    
+    @step
+    def start(self):
+        from datetime import datetime
+        self.timestamp = datetime.now().isoformat()
+        print(f"Report generated at {self.timestamp}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### Monthly Data Processing
+
+```python
+@schedule(cron='0 2 1 * ? *')  # 2 AM on the first day of each month
+class MonthlyAggregation(FlowSpec):
+    
+    @step
+    def start(self):
+        from datetime import datetime
+        self.month = datetime.now().strftime('%Y-%m')
+        print(f"Processing data for {self.month}")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+### International Sync (Timezone-Aware)
+
+```python
+@schedule(
+    cron='0 8 * * 1',  # Monday at 8 AM
+    timezone='Europe/London'
+)
+class InternationalSync(FlowSpec):
+    
+    @step
+    def start(self):
+        print("Syncing international data...")
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Combining with Other Decorators
+
+```python
+from metaflow import FlowSpec, step, schedule, project
+
+@project(name='data-platform')
+@schedule(daily=True)
+class ScheduledProjectFlow(FlowSpec):
+    
+    @step
+    def start(self):
+        self.next(self.end)
+    
+    @step
+    def end(self):
+        pass
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use UTC for AWS schedules">
+    AWS Step Functions schedules always run in UTC, so plan accordingly:
+    
+    ```python
+    # If you want 9 AM Eastern (EST/EDT), use UTC
+    @schedule(cron='0 14 * * ? *')  # 9 AM EST = 2 PM UTC (EST)
+    # Note: Adjust for daylight saving time manually
+    ```
+  </Accordion>
+  
+  <Accordion title="Use timezone for global teams">
+    When working with Argo Workflows across timezones:
+    
+    ```python
+    @schedule(
+        cron='0 9 * * *',
+        timezone='America/New_York'
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Avoid high-frequency schedules">
+    Be cautious with very frequent schedules:
+    
+    ```python
+    # Good - hourly
+    @schedule(hourly=True)
+    
+    # Use with caution - every 5 minutes
+    @schedule(cron='*/5 * * * ? *')
+    ```
+  </Accordion>
+  
+  <Accordion title="Test schedule logic locally">
+    Test your flow's schedule-dependent logic locally:
+    
+    ```python
+    @step
+    def start(self):
+        from datetime import datetime
+        # This works both locally and in scheduled runs
+        self.run_time = datetime.now()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Production Deployment" icon="rocket" href="/production/overview">
+    Learn about deploying to production
+  </Card>
+  <Card title="Scheduling Guide" icon="calendar" href="/production/scheduling">
+    Complete guide to scheduling flows
+  </Card>
+  <Card title="AWS Step Functions" icon="aws" href="/orchestrators/aws/step-functions">
+    Deploy to AWS Step Functions
+  </Card>
+  <Card title="Argo Workflows" icon="dharmachakra" href="/orchestrators/kubernetes/argo-workflows">
+    Deploy to Argo Workflows
+  </Card>
+</CardGroup>
